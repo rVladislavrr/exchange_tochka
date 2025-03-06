@@ -25,3 +25,19 @@ services:
       - ./redisdata:/data
     restart: unless-stopped
     command: redis-server --requirepass ${REDIS_USER_PASSWORD}
+  postgres:
+    image: postgres:latest
+    container_name: postgres_db
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASS}
+      POSTGRES_DB: ${DB_NAME}
+    ports:
+      - "${DB_PORT}:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    env_file:
+      - .env
+volumes:
+  pg_data:
