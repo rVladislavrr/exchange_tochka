@@ -11,7 +11,7 @@ class UserBase(BaseModel):
 
 class UserRequest(UserBase):
     uuid: UUID4
-    role: Literal["admin", "guest", "user"]
+    role: Literal["admin", "user"]
 
 class ProtectedRout(BaseModel):
     user: UserRequest

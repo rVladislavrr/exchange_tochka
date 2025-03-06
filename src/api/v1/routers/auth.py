@@ -23,7 +23,8 @@ async def registration(user: UserBase, session: AsyncSession = Depends(get_async
     h = hashlib.shake_256(user.name.encode() + time)
     api_key = h.hexdigest(32)
 
-    user = await usersManager.create(session, {'name': user.name, 'api_key': api_key})
+    user = await usersManager.create(session, {'name': user.name,
+                                               'api_key': api_key})
 
     data_user = {
         "uuid": user.uuid,

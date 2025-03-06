@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 class BaseManager:
     model: Any
-    primary_key: str | int
+    primary_key: str
 
     def __init__(self):
         if hasattr(self.model, "uuid"):
