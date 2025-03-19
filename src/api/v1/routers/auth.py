@@ -11,13 +11,13 @@ from src.redis_conn import redis_client
 from src.utils.custom_serializer import custom_serializer_json
 
 router = APIRouter(tags=["Auth"])
-api_key_header = APIKeyHeader(name="Authorization", auto_error=False, description=r"Форма записи Token \<token\>")
+api_key_header = APIKeyHeader(name="Authorization", auto_error=False, description=r"Форма записи TOKEN \<token\>")
 
 async def for_documentation(api_key: str = Security(api_key_header)):
     pass
 
 
-@router.post("/registration", status_code=status.HTTP_201_CREATED)
+@router.post("/public/registration", status_code=status.HTTP_201_CREATED)
 async def registration(user: UserBase, session: AsyncSession = Depends(get_async_session)):
     time = str(datetime.now()).encode()
     h = hashlib.shake_256(user.name.encode() + time)
@@ -30,6 +30,7 @@ async def registration(user: UserBase, session: AsyncSession = Depends(get_async
         "uuid": user.uuid,
         "name": user.name,
         "role": user.role,
+        "balance": user.balance,
     }
 
     redis = await redis_client.get_redis()
