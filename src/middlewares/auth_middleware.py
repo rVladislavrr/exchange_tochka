@@ -1,3 +1,5 @@
+import json
+
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
@@ -31,11 +33,16 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         try:
             redis = await redis_client.get_redis()
-            user = await validate_token(token, redis)
+            userJson = await validate_token(token, redis)
+            user = json.loads(userJson)
 
         except Exception as e:
             print(e)
             return JSONResponse({"detail": "Missing or invalid token"}, status_code=401)
 
-        request.state.user = user
+        if ('/admin/' in request.url.path
+                and user.get("role", "user") != 'admin'):
+            return JSONResponse({"detail": "FORBIDDEN"}, status_code=403)
+
+        request.state.user = json.loads(user)
         return await call_next(request)
