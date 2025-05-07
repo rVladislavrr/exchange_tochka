@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Request, Depends, BackgroundTasks, HTTPException
+from datetime import datetime
+
+from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException, Path
 from pydantic import UUID4
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -8,12 +10,15 @@ from src.db.instrumentManager import instrumentsManager
 from src.db.users import usersManager
 from src.redis_conn import redis_client
 from src.schemas import InstrumentCreate
+from src.utils.redis_utils import update_cache_after_delete
 
 router = APIRouter(tags=["Admin"], prefix='/admin')
+
 
 async def clear_instruments_cache():
     redis = await redis_client.get_redis()
     await redis.delete("instruments")
+
 
 async def clear_user_cache(api_key):
     redis = await redis_client.get_redis()
@@ -28,6 +33,7 @@ async def add_instrument(instrument: InstrumentCreate,
     backgroundTasks.add_task(clear_instruments_cache)
     return instrument
 
+
 @router.delete('/user/{user_id}')
 async def delete_user(user_id: UUID4,
                       backgroundTasks: BackgroundTasks,
@@ -41,8 +47,20 @@ async def delete_user(user_id: UUID4,
             raise HTTPException(status_code=400, detail="User already deleted")
 
         user.is_active = False
+        user.delete_at = datetime.now()
         await session.commit()
         backgroundTasks.add_task(clear_user_cache, user.api_key)
         return user
 
     raise HTTPException(status_code=404, detail="User not found")
+
+
+@router.delete('/instrument/{ticker}')
+async def delete_instrument(backgroundTasks: BackgroundTasks,
+                            ticker: str = Path(pattern='^[A-Z]{2,10}$'),
+                            session: AsyncSession = Depends(get_async_session)):
+    await instrumentsManager.delete(ticker, session)
+    backgroundTasks.add_task(update_cache_after_delete, ticker)
+    return {
+        "success": True
+    }

@@ -8,7 +8,7 @@ from src.db.db import async_session_maker
 from src.redis_conn import redis_client
 from src.db.users import usersManager
 from src.schemas.user import UserRedis
-from src.utils.redis_load import load_user_redis
+from src.utils.redis_utils import load_user_redis
 
 
 async def validate_token(token):

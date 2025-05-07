@@ -1,5 +1,7 @@
 from fastapi import HTTPException
 from typing import Any
+
+from sqlalchemy import select, func, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -34,6 +36,37 @@ class InstrumentsManager(BaseManager):
                 status_code=500,
                 detail="Internal server error"
             ) from error
+
+    async def get_all(self, session: AsyncSession) -> Any:
+        instruments = await session.execute(
+            select(self.model).where(self.model.is_active == True)
+        )
+        return instruments.scalars().all()
+
+    async def get_ticker(self, ticker: str, session: AsyncSession) -> Any:
+        return (await session.execute(
+            select(self.model).where(self.model.ticker == ticker)
+        )).scalar_one_or_none()
+
+    async def delete(self, ticker: str, session: AsyncSession):
+        stmt = (
+            update(self.model)
+            .where(self.model.ticker == ticker, self.model.is_active == True)
+            .values(is_active=False, delete_at=func.now())
+            .returning(self.model)
+        )
+
+        result = await session.execute(stmt)
+        deleted_instrument = result.scalar_one_or_none()
+        await session.commit()
+
+        if not deleted_instrument:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Instrument with ticker {ticker} not found or already inactive"
+            )
+
+        return deleted_instrument
 
 
 instrumentsManager = InstrumentsManager()

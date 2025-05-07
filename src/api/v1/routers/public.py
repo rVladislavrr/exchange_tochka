@@ -1,18 +1,12 @@
 import hashlib
-import json
-from datetime import datetime, timedelta
-from typing import List
-
-from sqlalchemy import select
+from datetime import datetime
 from fastapi import APIRouter, status, Depends, BackgroundTasks
 
 from src import schemas
 from src.db.db import get_async_session, AsyncSession
-from src.models import Instruments
 from src.db.users import usersManager
-from src.redis_conn import redis_client
-from src.utils.custom_serializer import custom_serializer_json
-from src.utils.redis_load import load_user_redis
+from src.utils.get_resources import get_instruments
+from src.utils.redis_utils import load_user_redis
 
 router = APIRouter(tags=["Auth"], prefix='/public')
 
@@ -33,55 +27,9 @@ async def registration(user: schemas.UserBase,
     return schemas.UserRegister.model_validate(user, from_attributes=True)
 
 
-async def update_instruments_cache(instruments: List[Instruments]):
-    try:
-        redis = await redis_client.get_redis()
+@router.get('/instrument', name='get_instruments')
+async def get_instruments_api(background_tasks: BackgroundTasks,
+                              session=Depends(get_async_session)) -> list[schemas.InstrumentCreate]:
 
-        # Сначала удаляем старые данные (опционально)
-        await redis.delete("instruments")
-
-        pipe = redis.pipeline()
-
-        for instrument in instruments:
-            instrument_data = {
-                "ticker": instrument.ticker,
-                "name": instrument.name,
-            }
-            pipe.hset("instruments", instrument.ticker, json.dumps(instrument_data))
-
-        pipe.expire("instruments", 420)
-        await pipe.execute()
-
-    except Exception as e:
-        print(f"Error updating cache: {e}")
-        # Лучше добавить логирование ошибок
-
-
-@router.get('/instrument')
-async def get_instruments(background_tasks: BackgroundTasks,
-                          session=Depends(get_async_session)) -> list[schemas.InstrumentCreate]:
-    try:
-        redis = await redis_client.get_redis()
-
-        if await redis.exists("instruments"):
-            print("cache")
-            all_instruments = await redis.hgetall("instruments")
-            try:
-                return [json.loads(value) for value in all_instruments.values()]
-            except json.JSONDecodeError as e:
-                print(f"Ошибка декодирования JSON из Redis: {e}")
-
-        result = await session.execute(
-            select(Instruments).where(Instruments.is_active == True)
-        )
-        instruments = result.scalars().all()
-        if not instruments:
-            return []
-
-        background_tasks.add_task(update_instruments_cache, instruments)
-
-        return instruments
-
-    except Exception as e:
-        print(f"Ошибка при получении инструментов: {e}")
-        return []
+    instruments = await get_instruments(session, background_tasks)
+    return instruments
