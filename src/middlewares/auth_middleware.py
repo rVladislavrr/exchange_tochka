@@ -4,13 +4,16 @@ from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
+from src.db.db import async_session_maker
 from src.redis_conn import redis_client
+from src.db.users import usersManager
+from src.schemas.user import UserRedis
+from src.utils.redis_load import load_user_redis
 
 
-async def validate_token(token, redis):
+async def validate_token(token):
+    redis = await redis_client.get_redis()
     user = await redis.get(f'user_key:{token}')
-    if not user:
-        return JSONResponse({"detail": "Missing or invalid token"}, status_code=401)
     return user
 
 
@@ -29,20 +32,32 @@ class AuthMiddleware(BaseHTTPMiddleware):
         token = auth_header.split(" ")[1]
 
         if len(token) != 64:
+            print('/')
             return JSONResponse({"detail": "Missing or invalid token"}, status_code=401)
 
         try:
-            redis = await redis_client.get_redis()
-            userJson = await validate_token(token, redis)
-            user = json.loads(userJson)
+            if userJson := await validate_token(token):
+                user = json.loads(userJson)
+            else:
+                async with async_session_maker() as session:
+                    user = await usersManager.get_user_apikey(token, session)
+                    if not user:
+                        return JSONResponse({"detail": "Missing or invalid token"}, status_code=401)
+                    else:
+                        user = await load_user_redis(user.api_key, user)
 
         except Exception as e:
             print(e)
             return JSONResponse({"detail": "Missing or invalid token"}, status_code=401)
 
+        user = UserRedis.model_validate(user, from_attributes=True)
+
+        if not user.is_active:
+            return JSONResponse({"detail": "User is not active"}, status_code=401)
+
         if ('/admin/' in request.url.path
-                and user.get("role", "user") != 'admin'):
+                and user.role != 'admin'):
             return JSONResponse({"detail": "FORBIDDEN"}, status_code=403)
 
-        request.state.user = json.loads(user)
+        request.state.user = user
         return await call_next(request)

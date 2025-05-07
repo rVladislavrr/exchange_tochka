@@ -20,6 +20,7 @@ class BaseManager:
             await session.flush()
             await session.refresh(instance)
         except Exception as e:
+            await session.rollback()
             raise e
         await session.commit()
         return instance

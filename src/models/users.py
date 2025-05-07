@@ -21,7 +21,7 @@ class Users(Base):
     api_key: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     balance: Mapped[float] = mapped_column(nullable=False, index=True, default=0)
 
+    is_active: Mapped[bool] = mapped_column(default=True)
     # email: Mapped[str] = mapped_column(unique=True, index=True)
     # hash_password: Mapped[str]
-    # is_active: Mapped[bool] = mapped_column(default=True)
     # is_verified: Mapped[bool] = mapped_column(default=False)

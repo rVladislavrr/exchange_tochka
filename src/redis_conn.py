@@ -3,7 +3,6 @@ import redis.asyncio as redis
 from src.config import settings
 
 class RedisClient:
-    exp: int = settings.REDIS_EXP
 
     def __init__(self):
         self.redis = None

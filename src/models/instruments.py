@@ -12,7 +12,7 @@ class Instruments(Base):
     name: Mapped[str] = mapped_column(nullable=False)
     current_price: Mapped[float] = mapped_column(default=0.0, nullable=False)
     ticker: Mapped[str] = mapped_column(String(10), nullable=False, unique=True)
-    is_active: Mapped[bool] = mapped_column(default=False, nullable=False)
+    is_active: Mapped[bool] = mapped_column(nullable=False, default=True)
     
 
 
