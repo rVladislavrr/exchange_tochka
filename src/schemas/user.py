@@ -1,4 +1,5 @@
 from typing import Literal
+
 from pydantic import BaseModel, Field, UUID4, field_validator
 
 ONLY_LETTERS_ONE_WORD = r'^[a-zA-ZА-Яа-я]+$'
@@ -10,7 +11,7 @@ class UserBase(BaseModel):
 
 class UserRequest(UserBase):
     id: UUID4 = Field(..., alias="id", validation_alias="uuid", serialization_alias='id')
-    role: Literal["admin", "user"]
+    role: Literal["ADMIN", "USER"]
 
     @field_validator("role", mode="before")
     @classmethod

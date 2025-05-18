@@ -50,3 +50,12 @@ async def load_user_redis(api_key, user):
     redis = await redis_client.get_redis()
     await redis.set(f'user_key:{api_key}', json.dumps(data_user_redis, default=custom_serializer_json), ex=3600)
     return data_user_redis
+
+async def clear_instruments_cache():
+    redis = await redis_client.get_redis()
+    await redis.delete("instruments")
+
+
+async def clear_user_cache(api_key):
+    redis = await redis_client.get_redis()
+    await redis.delete(f'user_key:{api_key}')

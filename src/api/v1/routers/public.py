@@ -1,5 +1,5 @@
 import hashlib
-from datetime import datetime
+import secrets
 from fastapi import APIRouter, status, Depends, BackgroundTasks
 
 from src import schemas
@@ -8,16 +8,22 @@ from src.db.users import usersManager
 from src.utils.get_resources import get_instruments
 from src.utils.redis_utils import load_user_redis
 
-router = APIRouter(tags=["Auth"], prefix='/public')
+router = APIRouter(tags=["Public"], prefix='/public')
+
+
+def generate_api_key(username: str) -> str:
+    random_part = secrets.token_hex(16)
+
+    unique_string = f"{username}-{random_part}"
+
+    return hashlib.sha256(unique_string.encode()).hexdigest()
 
 
 @router.post("/registration", status_code=status.HTTP_201_CREATED, )
 async def registration(user: schemas.UserBase,
                        background_tasks: BackgroundTasks,
                        session: AsyncSession = Depends(get_async_session)) -> schemas.UserRegister:
-    time = str(datetime.now()).encode()
-    h = hashlib.shake_256(user.name.encode() + time)
-    api_key = h.hexdigest(32)
+    api_key = generate_api_key(user.name)
 
     user = await usersManager.create(session, {'name': user.name,
                                                'api_key': api_key})
@@ -30,6 +36,5 @@ async def registration(user: schemas.UserBase,
 @router.get('/instrument', name='get_instruments')
 async def get_instruments_api(background_tasks: BackgroundTasks,
                               session=Depends(get_async_session)) -> list[schemas.InstrumentCreate]:
-
     instruments = await get_instruments(session, background_tasks)
     return instruments

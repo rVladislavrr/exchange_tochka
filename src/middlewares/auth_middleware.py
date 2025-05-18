@@ -56,7 +56,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return JSONResponse({"detail": "User is not active"}, status_code=401)
 
         if ('/admin/' in request.url.path
-                and user.role != 'admin'):
+                and user.role != 'ADMIN'):
             return JSONResponse({"detail": "FORBIDDEN"}, status_code=403)
 
         request.state.user = user

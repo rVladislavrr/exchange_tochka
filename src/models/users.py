@@ -6,8 +6,8 @@ from src.models.base import Base
 
 
 class RoleEnum(enum.Enum):
-    ADMIN = "admin"
-    USER = "user"
+    ADMIN = "ADMIN"
+    USER = "USER"
 
 
 class Users(Base):

@@ -2,25 +2,40 @@ import enum
 from datetime import datetime
 
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy import ForeignKey, String, Enum
+from sqlalchemy import ForeignKey, Enum, UUID, func
 
 from src.models.base import Base
 
+
 class StatusEnum(enum.Enum):
-    OPEN = "open"
-    CANCELLED = "cancelled"
-    COMPLETED = "completed"
-    PENDING = "pending"
+    NEW = "NEW"
+    EXECUTED = "EXECUTED"
+    PARTIALLY_EXECUTED = "PARTIALLY_EXECUTED"
+    CANCELLED = "CANCELLED"
+    PENDING = "PENDING"
+
+
+class TypeEnum(enum.Enum):
+    LIMIT_ORDER = 'LIMIT_ORDER'
+    MARKET_ORDER = 'MARKET_ORDER'
+
+
+class SideEnum(enum.Enum):
+    BUY = "BUY"
+    SELL = "SELL"
+
 
 class Orders(Base):
     __tablename__ = 'orders'
 
-    id: Mapped[int] = mapped_column(primary_key=True)
+    uuid: Mapped[UUID] = mapped_column(UUID(as_uuid=True), server_default=func.gen_random_uuid(),
+                                       nullable=False, index=True, primary_key=True)
     user_uuid: Mapped[str] = mapped_column(ForeignKey('users.uuid'))
-    instrument: Mapped[int] = mapped_column(ForeignKey('instruments.id'))
-    order_type: Mapped[str] = mapped_column(String(6), nullable=False)
-    side: Mapped[str] = mapped_column(String(4), nullable=False)
-    price: Mapped[float] = mapped_column( nullable=False)
-    quantity: Mapped[float] = mapped_column( nullable=False)
-    status: Mapped[StatusEnum] = mapped_column(Enum(StatusEnum), nullable=False, default=StatusEnum.OPEN)
+    instrument_id: Mapped[int] = mapped_column(ForeignKey('instruments.id'))
+    order_type: Mapped[TypeEnum] = mapped_column(Enum(TypeEnum), nullable=False, index=True)
+    side: Mapped[SideEnum] = mapped_column(Enum(SideEnum), nullable=False)
+    price: Mapped[float] = mapped_column(nullable=True, index=True)
+    qty: Mapped[int] = mapped_column(nullable=False)
+    status: Mapped[StatusEnum] = mapped_column(Enum(StatusEnum), nullable=False, default=StatusEnum.NEW, index=True)
+    filled: Mapped[int] = mapped_column(nullable=False)
     activation_time: Mapped[datetime] = mapped_column(nullable=True)

@@ -6,3 +6,4 @@ router = APIRouter(prefix="/v1")
 
 router.include_router(routers.public)
 router.include_router(routers.admin)
+router.include_router(routers.order)

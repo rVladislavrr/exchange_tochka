@@ -1,8 +1,8 @@
-"""create Tables
+"""Add tables
 
-Revision ID: c0d112bab943
+Revision ID: 7cffd20673d6
 Revises: 
-Create Date: 2025-05-06 23:55:57.386847
+Create Date: 2025-05-18 13:03:02.846401
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'c0d112bab943'
+revision: str = '7cffd20673d6'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -23,21 +23,22 @@ def upgrade() -> None:
     op.create_table('instruments',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('name', sa.String(), nullable=False),
-    sa.Column('current_price', sa.Float(), nullable=False),
     sa.Column('ticker', sa.String(length=10), nullable=False),
-    sa.Column('is_active', sa.Boolean(), nullable=False, default=True),
+    sa.Column('is_active', sa.Boolean(), nullable=False),
     sa.Column('create_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
     sa.Column('update_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
     sa.Column('delete_at', sa.DateTime(), nullable=True),
-    sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('ticker')
+    sa.PrimaryKeyConstraint('id')
     )
+    op.create_index(op.f('ix_instruments_ticker'), 'instruments', ['ticker'], unique=False)
+    op.create_index('uq_active_ticker', 'instruments', ['ticker'], unique=True, postgresql_where=sa.text('is_active = true'))
     op.create_table('users',
     sa.Column('uuid', sa.UUID(), server_default=sa.text('gen_random_uuid()'), nullable=False),
     sa.Column('name', sa.String(), nullable=True),
     sa.Column('role', sa.Enum('ADMIN', 'USER', name='roleenum'), nullable=False),
     sa.Column('api_key', sa.String(length=255), nullable=False),
     sa.Column('balance', sa.Float(), nullable=False),
+    sa.Column('is_active', sa.Boolean(), nullable=False),
     sa.Column('create_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
     sa.Column('update_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
     sa.Column('delete_at', sa.DateTime(), nullable=True),
@@ -47,22 +48,27 @@ def upgrade() -> None:
     op.create_index(op.f('ix_users_balance'), 'users', ['balance'], unique=False)
     op.create_index(op.f('ix_users_uuid'), 'users', ['uuid'], unique=False)
     op.create_table('orders',
-    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('uuid', sa.UUID(), server_default=sa.text('gen_random_uuid()'), nullable=False),
     sa.Column('user_uuid', sa.UUID(), nullable=False),
-    sa.Column('instrument', sa.Integer(), nullable=False),
-    sa.Column('order_type', sa.String(length=6), nullable=False),
-    sa.Column('side', sa.String(length=4), nullable=False),
-    sa.Column('price', sa.Float(), nullable=False),
-    sa.Column('quantity', sa.Float(), nullable=False),
-    sa.Column('status', sa.Enum('OPEN', 'CANCELLED', 'COMPLETED', 'PENDING', name='statusenum'), nullable=False),
+    sa.Column('instrument_id', sa.Integer(), nullable=False),
+    sa.Column('order_type', sa.Enum('LIMIT_ORDER', 'MARKET_ORDER', name='typeenum'), nullable=False),
+    sa.Column('side', sa.Enum('BUY', 'SELL', name='sideenum'), nullable=False),
+    sa.Column('price', sa.Float(), nullable=True),
+    sa.Column('qty', sa.Integer(), nullable=False),
+    sa.Column('status', sa.Enum('NEW', 'EXECUTED', 'PARTIALLY_EXECUTED', 'CANCELLED', 'PENDING', name='statusenum'), nullable=False),
+    sa.Column('filled', sa.Integer(), nullable=False),
     sa.Column('activation_time', sa.DateTime(), nullable=True),
     sa.Column('create_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
     sa.Column('update_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
     sa.Column('delete_at', sa.DateTime(), nullable=True),
-    sa.ForeignKeyConstraint(['instrument'], ['instruments.id'], ),
+    sa.ForeignKeyConstraint(['instrument_id'], ['instruments.id'], ),
     sa.ForeignKeyConstraint(['user_uuid'], ['users.uuid'], ),
-    sa.PrimaryKeyConstraint('id')
+    sa.PrimaryKeyConstraint('uuid')
     )
+    op.create_index(op.f('ix_orders_order_type'), 'orders', ['order_type'], unique=False)
+    op.create_index(op.f('ix_orders_price'), 'orders', ['price'], unique=False)
+    op.create_index(op.f('ix_orders_status'), 'orders', ['status'], unique=False)
+    op.create_index(op.f('ix_orders_uuid'), 'orders', ['uuid'], unique=False)
     op.create_table('price_history',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('instrument_id', sa.Integer(), nullable=False),
@@ -88,15 +94,15 @@ def upgrade() -> None:
     )
     op.create_table('trade_log',
     sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('buy_order_id', sa.Integer(), nullable=False),
-    sa.Column('sell_order_id', sa.Integer(), nullable=False),
+    sa.Column('buy_order_id', sa.UUID(), nullable=False),
+    sa.Column('sell_order_id', sa.UUID(), nullable=False),
     sa.Column('price', sa.Float(), nullable=False),
     sa.Column('quantity', sa.Integer(), nullable=False),
     sa.Column('create_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
     sa.Column('update_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
     sa.Column('delete_at', sa.DateTime(), nullable=True),
-    sa.ForeignKeyConstraint(['buy_order_id'], ['orders.id'], ),
-    sa.ForeignKeyConstraint(['sell_order_id'], ['orders.id'], ),
+    sa.ForeignKeyConstraint(['buy_order_id'], ['orders.uuid'], ),
+    sa.ForeignKeyConstraint(['sell_order_id'], ['orders.uuid'], ),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_table('user_trade_history',
@@ -122,10 +128,16 @@ def downgrade() -> None:
     op.drop_table('trade_log')
     op.drop_table('user_balances')
     op.drop_table('price_history')
+    op.drop_index(op.f('ix_orders_uuid'), table_name='orders')
+    op.drop_index(op.f('ix_orders_status'), table_name='orders')
+    op.drop_index(op.f('ix_orders_price'), table_name='orders')
+    op.drop_index(op.f('ix_orders_order_type'), table_name='orders')
     op.drop_table('orders')
     op.drop_index(op.f('ix_users_uuid'), table_name='users')
     op.drop_index(op.f('ix_users_balance'), table_name='users')
     op.drop_index(op.f('ix_users_api_key'), table_name='users')
     op.drop_table('users')
+    op.drop_index('uq_active_ticker', table_name='instruments', postgresql_where=sa.text('is_active = true'))
+    op.drop_index(op.f('ix_instruments_ticker'), table_name='instruments')
     op.drop_table('instruments')
     # ### end Alembic commands ###

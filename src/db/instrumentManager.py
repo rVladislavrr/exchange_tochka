@@ -18,7 +18,7 @@ class InstrumentsManager(BaseManager):
 
         except IntegrityError as error:
             # Улучшенная проверка нарушения уникальности
-            if "unique constraint" in str(error).lower() or "duplicate key" in str(error).lower():
+            if "uq_active_ticker" in str(error).lower() or "duplicate key" in str(error).lower():
                 ticker = data.get('ticker', 'unknown')
                 raise HTTPException(
                     status_code=409,
