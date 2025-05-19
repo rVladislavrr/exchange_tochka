@@ -31,13 +31,14 @@ async def add_instrument(instrument: InstrumentCreate,
     return instrument
 
 
+# TODO: При удалении пользователя все ордеры по нему должны быть отменены
 @router.delete('/user/{user_id}')
 async def delete_user(user_id: UUID4,
                       backgroundTasks: BackgroundTasks,
                       session: AsyncSession = Depends(get_async_session)) -> schemas.UserRegister:
     if user := await usersManager.get_user_uuid(user_id, session):
 
-        if user.role.value == "admin":
+        if user.role.value == "ADMIN":
             raise HTTPException(status_code=403, detail="FORBIDDEN, you cant disable admin")
 
         if not user.is_active:
@@ -52,10 +53,13 @@ async def delete_user(user_id: UUID4,
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
 
+# TODO: При удалении тикера все ордеры по нему должны быть отменены
 @router.delete('/instrument/{ticker}')
 async def delete_instrument(backgroundTasks: BackgroundTasks,
                             ticker: str = Path(pattern='^[A-Z]{2,10}$'),
                             session: AsyncSession = Depends(get_async_session)) -> BaseAnswer:
+    if ticker == 'RUB':
+        raise HTTPException(status_code=403, detail="Forbidden, you cant disable rub")
     await instrumentsManager.delete(ticker, session)
     backgroundTasks.add_task(update_cache_after_delete, ticker)
     return BaseAnswer()
@@ -70,7 +74,9 @@ async def deposit(deposit_obj: Deposit,
         .select_from(Users)
         .join(
             Instruments,
-            Instruments.ticker == deposit_obj.ticker,
+            and_(
+                Instruments.ticker == deposit_obj.ticker,
+                Instruments.is_active == True),
             isouter=True,
         )
         .join(

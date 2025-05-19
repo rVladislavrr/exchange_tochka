@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import ForeignKey, Enum, UUID, func
 
 from src.models.base import Base
@@ -37,5 +37,11 @@ class Orders(Base):
     price: Mapped[float] = mapped_column(nullable=True, index=True)
     qty: Mapped[int] = mapped_column(nullable=False)
     status: Mapped[StatusEnum] = mapped_column(Enum(StatusEnum), nullable=False, default=StatusEnum.NEW, index=True)
-    filled: Mapped[int] = mapped_column(nullable=False)
+    filled: Mapped[int] = mapped_column(nullable=True)
     activation_time: Mapped[datetime] = mapped_column(nullable=True)
+
+    user = relationship("Users", back_populates="orders")
+    instrument = relationship("Instruments", back_populates="orders")
+
+    buy_trades = relationship("TradeLog", back_populates="buy_order", foreign_keys="[TradeLog.buy_order_id]")
+    sell_trades = relationship("TradeLog", back_populates="sell_order", foreign_keys="[TradeLog.sell_order_id]")

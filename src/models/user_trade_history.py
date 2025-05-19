@@ -1,5 +1,5 @@
 from sqlalchemy import ForeignKey
-from sqlalchemy.orm import mapped_column, Mapped
+from sqlalchemy.orm import mapped_column, Mapped, relationship
 
 from src.models.base import Base
 
@@ -13,3 +13,5 @@ class UserTradeHistory(Base):
     price: Mapped[float] = mapped_column(nullable=False, )
     quantity: Mapped[float] = mapped_column(nullable=False, )
 
+    user = relationship("Users", back_populates="trade_history")
+    trade = relationship("TradeLog", back_populates="user_trade_history")

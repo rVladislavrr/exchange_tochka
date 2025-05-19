@@ -16,6 +16,7 @@ async def get_instruments(session, background_tasks):
                 return [json.loads(value) for value in all_instruments.values()]
             except json.JSONDecodeError as e:
                 print(f"Ошибка декодирования JSON из Redis: {e}")
+                await redis.delete("instruments")
 
         instruments = await instrumentsManager.get_all(session)
 

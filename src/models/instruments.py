@@ -1,4 +1,4 @@
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import String, Index, UniqueConstraint
 
 from src.models.base import Base
@@ -20,6 +20,9 @@ class Instruments(Base):
             postgresql_where=(is_active == True)
         ),
     )
+
+    orders = relationship("Orders", back_populates="instrument")
+    balances = relationship("UserBalances", back_populates="instrument")
     
 
 

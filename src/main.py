@@ -7,6 +7,7 @@ from starlette.middleware.cors import CORSMiddleware
 from src.middlewares.auth_middleware import AuthMiddleware
 from src.redis_conn import redis_client
 from src.api.v1 import router
+from src.utils.create import create_rub
 
 api_key_header = APIKeyHeader(name="Authorization", auto_error=False, description=r"Форма записи TOKEN \<token\>")
 
@@ -16,6 +17,7 @@ async def for_documentation(api_key: str = Security(api_key_header)):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await redis_client.connect()
+    await create_rub()
     yield
     await redis_client.close()
 app = FastAPI(

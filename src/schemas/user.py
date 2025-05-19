@@ -34,5 +34,4 @@ class UserRegister(UserRequest):
 
 
 class UserRedis(UserRequest):
-    balance: float
     is_active: bool
