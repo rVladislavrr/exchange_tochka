@@ -45,3 +45,7 @@ class Orders(Base):
 
     buy_trades = relationship("TradeLog", back_populates="buy_order", foreign_keys="[TradeLog.buy_order_id]")
     sell_trades = relationship("TradeLog", back_populates="sell_order", foreign_keys="[TradeLog.sell_order_id]")
+
+    @property
+    def ticker(self):
+        return self.instrument.ticker

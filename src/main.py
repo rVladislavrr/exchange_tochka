@@ -14,6 +14,7 @@ api_key_header = APIKeyHeader(name="Authorization", auto_error=False, descriptio
 async def for_documentation(api_key: str = Security(api_key_header)):
     pass
 
+# TODO: при запуске обновлять кеш все ордеров
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await redis_client.connect()

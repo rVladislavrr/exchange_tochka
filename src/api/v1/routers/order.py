@@ -1,17 +1,19 @@
-import enum
+from datetime import datetime
 
 from fastapi import APIRouter, Request, Depends, HTTPException, BackgroundTasks, status
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, UUID4
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from src.db.db import get_async_session
 from src.db.users import usersManager
-from src.models import Orders, TradeLog
+from src.models import Orders, TradeLog, Users
 from src.models.orders import TypeEnum, SideEnum, StatusEnum
 from src.redis_conn import redis_client
-from src.tasks.orders import match_order_limit
+from src.tasks.orders import match_order_limit, add_tradeLog_redis
 from src.utils.redis_utils import check_ticker_exists, calculate_order_cost
+from src.tasks.celery_tasks import match_order_limit2
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
@@ -31,7 +33,6 @@ class LimitOrder(OrderBase):
 
 
 async def create_orderOrm(user, session, instrument_id, order_data):
-    print(order_data, order_data.direction)
     orders = Orders(
         user_uuid=user.id,
         instrument_id=instrument_id,
@@ -48,16 +49,114 @@ async def create_orderOrm(user, session, instrument_id, order_data):
     return orders
 
 
+class Body(BaseModel):
+    direction: SideEnum = Field(validation_alias='side')
+    ticker: str = Field(..., pattern='^[A-Z]{2,10}$')
+    qty: int = Field(..., ge=1)
+    price: int | None
+
+
+class GetOrder(BaseModel):
+    id: UUID4 = Field(validation_alias='uuid')
+    status: StatusEnum
+    user_id: UUID4 = Field(validation_alias='user_uuid')
+    timestamp: datetime = Field(validation_alias='create_at')
+    body: Body
+    filled: int = Field(..., ge=0)
+
+
+def create_GetOrder(orderOrm):
+    body = Body.model_validate(orderOrm, from_attributes=True)
+    order = GetOrder.model_validate(
+        {
+            **orderOrm.__dict__,
+            "body": body
+        },
+        from_attributes=True
+    )
+    return order
+
+
+@router.get('/{order_id}')
+async def get_order(request: Request,
+                    order_id: UUID4,
+                    session: AsyncSession = Depends(get_async_session)) -> GetOrder:
+    orderOrm = (await session.execute(
+        select(Orders).options(selectinload(Orders.instrument)).where(Orders.uuid == order_id,
+                                                                      Orders.user_uuid == request.state.user.id)
+    )).scalars().one_or_none()
+    if not orderOrm:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Order not found")
+
+    order = create_GetOrder(orderOrm)
+    return order
+
+
+@router.delete('/{order_id}')
+async def cancel_order(request: Request,
+                       order_id: UUID4, session: AsyncSession = Depends(get_async_session)):
+    orderOrm = (await session.execute(
+        select(Orders).options(selectinload(Orders.instrument)).where(Orders.uuid == order_id, )
+    )).scalar_one_or_none()
+
+    if not orderOrm:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+
+    if str(orderOrm.user_uuid) != str(request.state.user.id) and request.state.user.role != "ADMIN":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
+
+    if orderOrm.status in {StatusEnum.EXECUTED, StatusEnum.CANCELLED}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST)
+
+    key = f"{int(orderOrm.price)}:{int(orderOrm.qty - orderOrm.filled)}:{orderOrm.uuid}"
+    orderbook_key = f"orderbook:{orderOrm.ticker}:{'asks' if orderOrm.side == SideEnum.SELL else 'bids'}"
+
+    if orderOrm.side == SideEnum.BUY:
+        userBalanceRUB = await usersManager.get_user_balance_by_ticker(
+            session, orderOrm.user_uuid, ticker='RUB', create_if_missing=True
+        )
+        summa = orderOrm.price * (orderOrm.qty - orderOrm.filled)
+        userBalanceRUB.frozen_balance -= summa
+        userBalanceRUB.available_balance += summa
+    else:
+        userBalanceTicker = await usersManager.get_user_balance_by_ticker(
+            session, orderOrm.user_uuid, ticker=orderOrm.ticker, create_if_missing=True
+        )
+        userBalanceTicker.frozen_balance -= orderOrm.qty
+        userBalanceTicker.available_balance += orderOrm.qty
+
+    r = await redis_client.get_redis()
+    pipe = r.pipeline()
+    pipe.zrem(orderbook_key, key)
+    await pipe.execute()
+
+    orderOrm.status = StatusEnum.CANCELLED
+    await session.commit()
+
+    return {"success": True}
+
+
+@router.get('')
+async def get_list_orders(request: Request,
+                          session: AsyncSession = Depends(get_async_session)) -> list[GetOrder]:
+    user = request.state.user
+    user = (await session.execute(
+        select(Users).options(selectinload(Users.orders).selectinload(Orders.instrument)).where(Users.uuid == user.id)
+    )).scalars().one()
+    return [create_GetOrder(order) for order in user.orders]
+
+
 # фоновые задачи будут в celery, но пока в background_tasks
 
 
 @router.post("")
 async def create_order(request: Request, background_tasks: BackgroundTasks,
                        order_data: LimitOrder | MarketOrder,
-                       session: AsyncSession = Depends(get_async_session), ):
+                       session: AsyncSession = Depends(get_async_session)):
     r = await redis_client.get_redis()
     user = request.state.user
-    # process_limit_order.delay(order_data.ticker)
+    match_order_limit2.delay(order_data.ticker)
     instrument_id = await check_ticker_exists(order_data.ticker, session)
 
     userBalanceRub = await usersManager.get_user_balance_by_ticker(
@@ -111,9 +210,9 @@ async def create_order(request: Request, background_tasks: BackgroundTasks,
         if order_data.direction == SideEnum.SELL:
             userBalanceRub.available_balance += total_cost
             userBalanceTicker.available_balance -= order_data.qty
-            if (userBalanceTicker.available_balance <= 0
-                    and userBalanceTicker.frozen_balance <= 0):
-                await session.delete(userBalanceTicker)
+            # if (userBalanceTicker.available_balance <= 0
+            #         and userBalanceTicker.frozen_balance <= 0):
+            #     await session.delete(userBalanceTicker)
 
             # в этом же форе обновлять кеш
             pipe = r.pipeline()
@@ -124,7 +223,7 @@ async def create_order(request: Request, background_tasks: BackgroundTasks,
                 price = item.get("price")
                 quantity = item.get("quantity")
                 total_cost = item.get("cost")
-                original_qty = item["original_qty"]
+                original_qty = item.get("original_qty")
 
                 order_result = await session.execute(
                     select(Orders).where(Orders.uuid == buy_order_uuid)
@@ -148,8 +247,16 @@ async def create_order(request: Request, background_tasks: BackgroundTasks,
                     buy_order_id=buy_order.uuid,
                     price=price,
                     quantity=quantity,
+                    ticker=order_data.ticker
                 )
                 session.add(trade)
+                await session.flush()
+                add_tradeLog_redis(pipe, order_data.ticker, {
+                    "ticker": order_data.ticker,
+                    "amount": quantity,
+                    "price": price,
+                    "timestamp": trade.create_at.isoformat(),
+                })
 
                 # 4. Обновить статус ордера, если исполнен
                 buy_order.filled = (buy_order.filled or 0) + quantity
@@ -173,9 +280,9 @@ async def create_order(request: Request, background_tasks: BackgroundTasks,
             userBalanceRub.available_balance -= total_cost
             userBalanceTicker.available_balance += orderOrm.qty
 
-            if (userBalanceTicker.available_balance <= 0
-                    and userBalanceTicker.frozen_balance <= 0):
-                await session.delete(userBalanceTicker)
+            # if (userBalanceTicker.available_balance <= 0
+            #         and userBalanceTicker.frozen_balance <= 0):
+            #     await session.delete(userBalanceTicker)
 
             pipe = r.pipeline()
 
@@ -201,8 +308,8 @@ async def create_order(request: Request, background_tasks: BackgroundTasks,
                     session, sell_order.user_uuid, ticker="RUB", create_if_missing=True
                 )
 
-                rub_balance.frozen_balance += total_cost
-                sell_balance.available_balance -= quantity
+                rub_balance.available_balance += total_cost
+                sell_balance.frozen_balance -= quantity
 
                 # 3. Добавить в TradeLog
                 trade = TradeLog(
@@ -210,8 +317,16 @@ async def create_order(request: Request, background_tasks: BackgroundTasks,
                     buy_order_id=orderOrm.uuid,
                     price=price,
                     quantity=quantity,
+                    ticker=order_data.ticker
                 )
                 session.add(trade)
+                await session.flush()
+                add_tradeLog_redis(pipe, order_data.ticker, {
+                    "ticker": order_data.ticker,
+                    "amount": quantity,
+                    "price": price,
+                    "timestamp": trade.create_at.isoformat(),
+                })
 
                 # 4. Обновить статус ордера, если исполнен
                 sell_order.filled = (sell_order.filled or 0) + quantity
@@ -230,11 +345,10 @@ async def create_order(request: Request, background_tasks: BackgroundTasks,
 
             await session.commit()
             await pipe.execute()
-        # возможно сделано, но нужно протестировать !!!!
 
     else:
         try:
-            print(1)
+
             background_tasks.add_task(match_order_limit, orderOrm, order_data.ticker)
             await session.commit()
         except Exception as e:

@@ -2,10 +2,12 @@ from celery import Celery
 
 from src.config import settings
 
+
 celery_app = Celery(
     "worker",
     broker=f"{settings.REDIS_BASE_URL}/0",  # или REDIS_URL из .env
     backend=f"{settings.REDIS_BASE_URL}/1",
+    include=["src.tasks.celery_tasks"],
 )
 
 celery_app.conf.update(

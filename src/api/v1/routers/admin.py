@@ -31,7 +31,8 @@ async def add_instrument(instrument: InstrumentCreate,
     return instrument
 
 
-# TODO: При удалении пользователя все ордеры по нему должны быть отменены
+# TODO: При удалении пользователя все ордеры по нему должны быть отменены ( только активные )
+
 @router.delete('/user/{user_id}')
 async def delete_user(user_id: UUID4,
                       backgroundTasks: BackgroundTasks,
@@ -54,6 +55,7 @@ async def delete_user(user_id: UUID4,
 
 
 # TODO: При удалении тикера все ордеры по нему должны быть отменены
+# TODO: а деньги возращены всем пользователям по активным ордерам если они были заморожены
 @router.delete('/instrument/{ticker}')
 async def delete_instrument(backgroundTasks: BackgroundTasks,
                             ticker: str = Path(pattern='^[A-Z]{2,10}$'),
@@ -150,8 +152,8 @@ async def withdraw(deposit_obj: Deposit,
         raise HTTPException(status_code=400, detail="Not enough balance")
     try:
         userBalances.available_balance -= deposit_obj.amount
-        if userBalances.available_balance == 0:
-            await session.delete(userBalances)
+        # if userBalances.available_balance == 0:
+        #     await session.delete(userBalances)
         await session.commit()
     except SQLAlchemyError as e:
         await session.rollback()
