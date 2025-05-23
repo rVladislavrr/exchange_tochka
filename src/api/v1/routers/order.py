@@ -53,7 +53,10 @@ class Body(BaseModel):
     direction: SideEnum = Field(validation_alias='side')
     ticker: str = Field(..., pattern='^[A-Z]{2,10}$')
     qty: int = Field(..., ge=1)
-    price: int | None
+    price: int | None = None
+    model_config = ConfigDict(
+        exclude_none=True
+    )
 
 
 class GetOrder(BaseModel):
@@ -62,7 +65,10 @@ class GetOrder(BaseModel):
     user_id: UUID4 = Field(validation_alias='user_uuid')
     timestamp: datetime = Field(validation_alias='create_at')
     body: Body
-    filled: int = Field(..., ge=0)
+    filled: int | None = Field(None, ge=0)
+    model_config = ConfigDict(
+        exclude_none=True
+    )
 
 
 def create_GetOrder(orderOrm):
@@ -80,7 +86,7 @@ def create_GetOrder(orderOrm):
 @router.get('/{order_id}')
 async def get_order(request: Request,
                     order_id: UUID4,
-                    session: AsyncSession = Depends(get_async_session)) -> GetOrder:
+                    session: AsyncSession = Depends(get_async_session)):
     orderOrm = (await session.execute(
         select(Orders).options(selectinload(Orders.instrument)).where(Orders.uuid == order_id,
                                                                       Orders.user_uuid == request.state.user.id)
@@ -90,7 +96,7 @@ async def get_order(request: Request,
                             detail="Order not found")
 
     order = create_GetOrder(orderOrm)
-    return order
+    return order.model_dump(exclude_none=True)
 
 
 @router.delete('/{order_id}')
@@ -139,12 +145,12 @@ async def cancel_order(request: Request,
 
 @router.get('')
 async def get_list_orders(request: Request,
-                          session: AsyncSession = Depends(get_async_session)) -> list[GetOrder]:
+                          session: AsyncSession = Depends(get_async_session)):
     user = request.state.user
     user = (await session.execute(
         select(Users).options(selectinload(Users.orders).selectinload(Orders.instrument)).where(Users.uuid == user.id)
     )).scalars().one()
-    return [create_GetOrder(order) for order in user.orders]
+    return [create_GetOrder(order).model_dump(exclude_none=True) for order in user.orders]
 
 
 # фоновые задачи будут в celery, но пока в background_tasks
@@ -184,7 +190,6 @@ async def create_order(request: Request, background_tasks: BackgroundTasks,
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     else:
         if isinstance(order_data, MarketOrder):
-
             # при рыночном пытаемся собрать самую дешёвую покупку и проверяем от этого его баланс
             try:
                 total_cost, matched_orders = await calculate_order_cost(r, order_data.ticker,

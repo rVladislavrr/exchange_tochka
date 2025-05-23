@@ -22,6 +22,6 @@ async def get_balance(request: Request,
     user = result.scalar_one()
 
     return {
-        item.instrument.ticker: item.available_balance
-        for item in user.balances
+        item.instrument.ticker: item.available_balance + item.frozen_balance
+        for item in user.balances if item.instrument.is_active
     }

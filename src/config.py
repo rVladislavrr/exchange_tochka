@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     REDIS_USER_PASSWORD: str
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
+    ADMIN_API_KEY: str
 
     model_config = SettingsConfigDict(env_file=".env")
 
