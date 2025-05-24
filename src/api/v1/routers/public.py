@@ -24,13 +24,13 @@ def generate_api_key(username: str) -> str:
     return hashlib.sha256(unique_string.encode()).hexdigest()
 
 
-@router.post("/registration", status_code=status.HTTP_201_CREATED, )
+@router.post("/register", status_code=status.HTTP_201_CREATED, )
 async def registration(user: schemas.UserBase,
                        background_tasks: BackgroundTasks,
                        session: AsyncSession = Depends(get_async_session)) -> schemas.UserRegister:
     api_key = generate_api_key(user.name)
 
-    user = await usersManager.create(session, {'name': user.name,
+    user = await usersManager.create_admin(session, {'name': user.name,
                                                'api_key': api_key})
 
     background_tasks.add_task(load_user_redis, api_key, user)
@@ -45,7 +45,7 @@ async def get_instruments_api(background_tasks: BackgroundTasks,
     return instruments
 
 
-@router.get('/transaction/{ticker}', name='get_instrument')
+@router.get('/transactions/{ticker}', name='get_instrument')
 async def get_transaction(ticker: str = Path(pattern='^[A-Z]{2,10}$'),
                           limit: int = Query(10, gt=0), session: AsyncSession = Depends(get_async_session)):
     if limit < 199:

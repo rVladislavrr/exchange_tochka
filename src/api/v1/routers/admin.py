@@ -64,6 +64,7 @@ async def cancel_order_deleted_user(user_id, session: AsyncSession):
 async def delete_user(user_id: UUID4,
                       backgroundTasks: BackgroundTasks,
                       session: AsyncSession = Depends(get_async_session)) -> schemas.UserRegister:
+    print('del', user_id)
     if user := await usersManager.get_user_uuid(user_id, session):
 
         if user.role.value == "ADMIN":
@@ -120,8 +121,9 @@ async def cancel_order_deleted_ticker(id_instrument, session):
 async def delete_instrument(backgroundTasks: BackgroundTasks,
                             ticker: str = Path(pattern='^[A-Z]{2,10}$'),
                             session: AsyncSession = Depends(get_async_session)) -> BaseAnswer:
-    if ticker == 'RUB':
-        raise HTTPException(status_code=403, detail="Forbidden, you cant disable rub")
+    print("del", ticker)
+    # if ticker == 'RUB':
+    #     raise HTTPException(status_code=403, detail="Forbidden, you cant disable rub")
     deleted_instruments = await instrumentsManager.delete(ticker, session)
     backgroundTasks.add_task(update_cache_after_delete, ticker)
     backgroundTasks.add_task(cancel_order_deleted_ticker, deleted_instruments.id, session)
@@ -156,7 +158,7 @@ async def deposit(deposit_obj: Deposit,
 
     result = await session.execute(stmt)
     user, instrument, user_balance = result.first() or (None, None, None)
-
+    print(user, instrument, user_balance,  deposit_obj)
     if not user:
         raise HTTPException(404, "User not found")
     if not instrument:

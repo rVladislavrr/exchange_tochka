@@ -15,7 +15,7 @@ from src.tasks.orders import match_order_limit, add_tradeLog_redis
 from src.utils.redis_utils import check_ticker_exists, calculate_order_cost
 from src.tasks.celery_tasks import match_order_limit2
 
-router = APIRouter(prefix="/orders", tags=["orders"])
+router = APIRouter(prefix="/order", tags=["orders"])
 
 
 class OrderBase(BaseModel):

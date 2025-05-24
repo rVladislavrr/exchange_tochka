@@ -42,7 +42,7 @@ async def create_admin_user():
             print("Админ уже существует, создание не требуется.")
             return
 
-        await usersManager.create(session, {
+        await usersManager.create_admin(session, {
             'name': 'admin',
             'role': RoleEnum.ADMIN,
             'api_key': settings.ADMIN_API_KEY

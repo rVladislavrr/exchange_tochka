@@ -18,7 +18,7 @@ async def for_documentation(api_key: str = Security(api_key_header)):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await redis_client.connect()
-    await create_rub()
+    #await create_rub()
     await create_admin_user()
     yield
     await redis_client.close()

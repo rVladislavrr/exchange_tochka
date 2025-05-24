@@ -35,6 +35,10 @@ class UsersManager(BaseManager):
         await session.commit()
         return user
 
+    async def create_admin(self, session: AsyncSession, data: dict) -> Any:
+        user = await super().create(session, data)
+        return user
+
     @staticmethod
     async def get_user_balance_by_ticker(
             session: AsyncSession,

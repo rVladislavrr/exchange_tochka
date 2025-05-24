@@ -10,7 +10,6 @@ async def get_instruments(session, background_tasks):
         redis = await redis_client.get_redis()
 
         if await redis.exists("instruments"):
-            print("cache")
             all_instruments = await redis.hgetall("instruments")
             try:
                 return [json.loads(value) for value in all_instruments.values()]
