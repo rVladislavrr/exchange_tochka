@@ -158,9 +158,17 @@ async def deposit(deposit_obj: Deposit,
 
     result = await session.execute(stmt)
     user, instrument, user_balance = result.first() or (None, None, None)
-    print(user, instrument, user_balance,  deposit_obj)
+    print(user, instrument, user_balance, deposit_obj)
     if not user:
         raise HTTPException(404, "User not found")
+
+    if deposit_obj.ticker == 'RUB':
+        userBalanceRUB = await usersManager.get_user_balance_by_ticker(
+            session, deposit_obj.user_id, ticker='RUB', create_if_missing=True
+        )
+        userBalanceRUB.available_balance += deposit_obj.amount
+        await session.commit()
+        return BaseAnswer()
     if not instrument:
         raise HTTPException(404, "Instrument not found")
 
