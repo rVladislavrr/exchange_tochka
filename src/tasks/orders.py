@@ -1,4 +1,5 @@
 import json
+from datetime import timezone
 
 from sqlalchemy import select
 
@@ -90,12 +91,11 @@ async def match_order_limit(orderOrm: Orders, ticker: str):
                             ticker=ticker
                         )
                         session.add(trade)
-                        await session.flush()
                         add_tradeLog_redis(pipe, ticker, {
                             "ticker": ticker,
                             "amount": quantity,
                             "price": price,
-                            "timestamp": trade.create_at.isoformat(),
+                            "timestamp": trade.create_at.replace(tzinfo=timezone.utc).isoformat(),
                         })
 
                         buy_order.filled = (buy_order.filled or 0) + quantity
@@ -147,12 +147,11 @@ async def match_order_limit(orderOrm: Orders, ticker: str):
                             ticker=ticker
                         )
                         session.add(trade)
-                        await session.flush()
                         add_tradeLog_redis(pipe, ticker, {
                             "ticker": ticker,
                             "amount": quantity,
                             "price": price,
-                            "timestamp": trade.create_at.isoformat(),
+                            "timestamp": trade.create_at.replace(tzinfo=timezone.utc).isoformat(),
                         })
 
                         sell_order.filled = (sell_order.filled or 0) + quantity

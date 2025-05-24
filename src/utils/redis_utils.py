@@ -90,6 +90,7 @@ async def check_ticker_exists(ticker, session) -> int:
     # Получение данных по конкретному тикеру
     instrument_data = await redis.hget("instruments", ticker)
     if not instrument_data:
+
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ticker not found")
 
     try:

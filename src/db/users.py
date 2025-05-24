@@ -67,7 +67,6 @@ class UsersManager(BaseManager):
                 frozen_balance=0.0
             )
             session.add(balance)
-            await session.flush()
             return balance
 
         return balance

@@ -18,6 +18,7 @@ async def get_instruments(session, background_tasks):
                 await redis.delete("instruments")
 
         instruments = await instrumentsManager.get_all(session)
+        instruments = [i for i in instruments if i.is_active]
 
         if not instruments:
             return []

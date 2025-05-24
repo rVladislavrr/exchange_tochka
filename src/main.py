@@ -5,6 +5,7 @@ from fastapi.security import APIKeyHeader
 from starlette.middleware.cors import CORSMiddleware
 
 from src.middlewares.auth_middleware import AuthMiddleware
+from src.middlewares.log_middleware import LoggingMiddleware
 from src.redis_conn import redis_client
 from src.api.v1 import router
 from src.utils.create import create_rub, create_admin_user
@@ -18,7 +19,7 @@ async def for_documentation(api_key: str = Security(api_key_header)):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await redis_client.connect()
-    #await create_rub()
+    await create_rub()
     await create_admin_user()
     yield
     await redis_client.close()
@@ -37,3 +38,4 @@ app.add_middleware(
 
 app.include_router(router, prefix='/api')
 app.add_middleware(AuthMiddleware)
+app.add_middleware(LoggingMiddleware)

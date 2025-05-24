@@ -1,6 +1,7 @@
 import hashlib
 import json
 import secrets
+from datetime import timezone
 
 from fastapi import APIRouter, status, Depends, BackgroundTasks, Path, Query
 from sqlalchemy import select
@@ -60,7 +61,7 @@ async def get_transaction(ticker: str = Path(pattern='^[A-Z]{2,10}$'),
         return [{"ticker": item.ticker,
                  "amount": item.quantity,
                  "price": item.price,
-                 "timestamp": item.create_at.isoformat()}
+                 "timestamp": item.create_at.replace(tzinfo=timezone.utc).isoformat()}
                 for item in res]
 
 

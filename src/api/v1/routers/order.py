@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Request, Depends, HTTPException, BackgroundTasks, status
 from pydantic import BaseModel, Field, ConfigDict, UUID4
@@ -187,7 +187,12 @@ async def create_order(request: Request, background_tasks: BackgroundTasks,
                 total_cost, matched_orders = await calculate_order_cost(r, order_data.ticker,
                                                                         order_data.qty, order_data.direction.value)
             except ValueError as e:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+                orderOrm = await create_orderOrm(user, session, instrument_id, order_data)
+                orderOrm.status = StatusEnum.CANCELLED
+                await session.commit()
+                return {"order_id": orderOrm.uuid,
+            "success": True}
+
     else:
         if isinstance(order_data, MarketOrder):
             # при рыночном пытаемся собрать самую дешёвую покупку и проверяем от этого его баланс
@@ -195,7 +200,11 @@ async def create_order(request: Request, background_tasks: BackgroundTasks,
                 total_cost, matched_orders = await calculate_order_cost(r, order_data.ticker,
                                                                         order_data.qty, order_data.direction.value)
             except ValueError as e:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+                orderOrm = await create_orderOrm(user, session, instrument_id, order_data)
+                orderOrm.status = StatusEnum.CANCELLED
+                await session.commit()
+                return {"order_id": orderOrm.uuid,
+                        "success": True}
             if total_cost > userBalanceRub.available_balance:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Not enough balance total_cost = '
                                                                                     '{}, your balance = {}'
@@ -255,12 +264,11 @@ async def create_order(request: Request, background_tasks: BackgroundTasks,
                     ticker=order_data.ticker
                 )
                 session.add(trade)
-                await session.flush()
                 add_tradeLog_redis(pipe, order_data.ticker, {
                     "ticker": order_data.ticker,
                     "amount": quantity,
                     "price": price,
-                    "timestamp": trade.create_at.isoformat(),
+                    "timestamp": trade.create_at.replace(tzinfo=timezone.utc).isoformat(),
                 })
 
                 # 4. Обновить статус ордера, если исполнен
@@ -325,12 +333,11 @@ async def create_order(request: Request, background_tasks: BackgroundTasks,
                     ticker=order_data.ticker
                 )
                 session.add(trade)
-                await session.flush()
                 add_tradeLog_redis(pipe, order_data.ticker, {
                     "ticker": order_data.ticker,
                     "amount": quantity,
                     "price": price,
-                    "timestamp": trade.create_at.isoformat(),
+                    "timestamp": trade.create_at.replace(tzinfo=timezone.utc).isoformat(),
                 })
 
                 # 4. Обновить статус ордера, если исполнен

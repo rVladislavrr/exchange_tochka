@@ -24,7 +24,6 @@ router = APIRouter(tags=["Admin"], prefix='/admin')
 class BaseAnswer(BaseModel):
     success: bool = True
 
-
 @router.post('/instrument')
 async def add_instrument(instrument: InstrumentCreate,
                          backgroundTasks: BackgroundTasks,
@@ -158,7 +157,7 @@ async def deposit(deposit_obj: Deposit,
 
     result = await session.execute(stmt)
     user, instrument, user_balance = result.first() or (None, None, None)
-    print(user, instrument, user_balance, deposit_obj)
+
     if not user:
         raise HTTPException(404, "User not found")
 
