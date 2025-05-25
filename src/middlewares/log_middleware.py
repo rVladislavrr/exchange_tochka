@@ -32,45 +32,48 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         method = request.method
         path = request.url.path
 
-        body_bytes = await request.body()
-        body_str = body_bytes.decode("utf-8", errors="ignore")
+        if path == '/api/v1/order':
 
-        try:
-            parsed_body = json.loads(body_str)
-        except Exception:
-            parsed_body = body_str
-
-        logger.info(f"[{request_id}] ➡️ {method} {path} | Body: {parsed_body if method in ['POST', 'DELETE'] else 'N/A'}")
-
-        async def receive() -> Message:
-            return {"type": "http.request", "body": body_bytes}
-
-        request._receive = receive
-
-        try:
-            response: Response = await call_next(request)
-
-            # Перехватываем тело ответа
-            response_body = b""
-            async for chunk in response.body_iterator:
-                response_body += chunk
-
-            new_response = Response(
-                content=response_body,
-                status_code=response.status_code,
-                headers=dict(response.headers),
-                media_type=response.media_type
-            )
-            new_response.headers["X-Request-ID"] = request_id
+            body_bytes = await request.body()
+            body_str = body_bytes.decode("utf-8", errors="ignore")
 
             try:
-                parsed_response = json.loads(response_body.decode("utf-8"))
+                parsed_body = json.loads(body_str)
             except Exception:
-                parsed_response = response_body[:300].decode("utf-8", errors="ignore")
+                parsed_body = body_str
 
-            logger.info(f"[{request_id}] ⬅️ {response.status_code} | Response: {parsed_response}")
-            return new_response
+            logger.info(f"[{request_id}] ➡️ {method} {path} | Body: {parsed_body if method in ['POST', 'DELETE'] else 'N/A'}")
 
-        except Exception as e:
-            logger.error(f"[{request_id}] ❌ Exception: {repr(e)}")
-            raise
+            async def receive() -> Message:
+                return {"type": "http.request", "body": body_bytes}
+
+            request._receive = receive
+
+            try:
+                response: Response = await call_next(request)
+
+                # Перехватываем тело ответа
+                response_body = b""
+                async for chunk in response.body_iterator:
+                    response_body += chunk
+
+                new_response = Response(
+                    content=response_body,
+                    status_code=response.status_code,
+                    headers=dict(response.headers),
+                    media_type=response.media_type
+                )
+                new_response.headers["X-Request-ID"] = request_id
+
+                try:
+                    parsed_response = json.loads(response_body.decode("utf-8"))
+                except Exception:
+                    parsed_response = response_body[:300].decode("utf-8", errors="ignore")
+
+                logger.info(f"[{request_id}] ⬅️ {response.status_code} | Response: {parsed_response}")
+                return new_response
+
+            except Exception as e:
+                logger.error(f"[{request_id}] ❌ Exception: {repr(e)}")
+                raise
+        return await call_next(request)
