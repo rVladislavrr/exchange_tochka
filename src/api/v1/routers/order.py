@@ -191,7 +191,7 @@ async def create_order(request: Request, background_tasks: BackgroundTasks,
                 orderOrm.status = StatusEnum.CANCELLED
                 await session.commit()
                 return {"order_id": orderOrm.uuid,
-            "success": True}
+                        "success": True}
 
     else:
         if isinstance(order_data, MarketOrder):

@@ -7,7 +7,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 from starlette.types import Message
 
-# === Настройка логгера ===
+
 LOG_DIR = "logs"
 LOG_FILE = "requests.log"
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -24,7 +24,6 @@ if not logger.handlers:
     logger.addHandler(file_handler)
 
 
-# === Middleware ===
 class LoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         request_id = str(uuid.uuid4())

@@ -20,7 +20,6 @@ async def create_rub():
             try:
                 await session.execute(
                     insert(Instruments).values(
-                        id=1,
                         name="Российский рубль",
                         ticker=RUB_TICKER,
                         is_active=True
