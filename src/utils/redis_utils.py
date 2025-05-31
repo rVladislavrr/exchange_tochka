@@ -3,6 +3,7 @@ import json
 from fastapi import HTTPException, status
 
 from src.db.instrumentManager import instrumentsManager
+from src.logger import cache_logger
 from src.redis_conn import redis_client
 from src.utils.custom_serializer import custom_serializer_json
 
@@ -31,39 +32,63 @@ async def update_instruments_cache(instruments):
         print(f"Error updating cache: {e}")
 
 
-async def update_cache_after_delete(ticker: str):
+async def update_cache_after_delete(ticker: str, request_id):
     try:
         redis = await redis_client.get_redis()
 
         await redis.hdel("instruments", ticker)
 
         await redis.expire("instruments", 420)
+        cache_logger.info(f"[{request_id}] delete instrument", extra={'ticker': ticker})
 
     except Exception as e:
-        print(f"Error updating cache after deletion: {e}")
+        cache_logger.error(f"[{request_id}] delete instrument error", exc_info=e, extra={'ticker': ticker})
 
 
-async def load_user_redis(api_key, user):
-    data_user_redis = {
-        "id": user.uuid,
-        "name": user.name,
-        "role": user.role,
-        "is_active": user.is_active,
-    }
+async def load_user_redis(api_key, user, request_id):
+    try:
+        data_user_redis = {
+            "id": user.uuid,
+            "name": user.name,
+            "role": user.role,
+            "is_active": user.is_active,
+        }
 
-    redis = await redis_client.get_redis()
-    await redis.set(f'user_key:{api_key}', json.dumps(data_user_redis, default=custom_serializer_json), ex=3600)
-    return data_user_redis
+        redis = await redis_client.get_redis()
+        await redis.set(f'user_key:{api_key}', json.dumps(data_user_redis, default=custom_serializer_json), ex=3600)
+
+        cache_logger.info(f"[{request_id}] load user redis", extra={'user_id': str(user.uuid)})
+        return data_user_redis
+    except Exception as e:
+        cache_logger.error(f"[{request_id}] load user redis error", extra={'user_id': str(user.uuid)})
+        raise
 
 
-async def clear_instruments_cache():
-    redis = await redis_client.get_redis()
-    await redis.delete("instruments")
+async def clear_instruments_cache(request_id):
+    try:
+        redis = await redis_client.get_redis()
+        await redis.delete("instruments")
+        cache_logger.info(
+            f"[{request_id}] Delete instruments"
+        )
+    except Exception as e:
+        cache_logger.error(
+            f"[{request_id}] ERROR Delete instruments", exc_info=e
+        )
 
 
-async def clear_user_cache(api_key):
-    redis = await redis_client.get_redis()
-    await redis.delete(f'user_key:{api_key}')
+async def clear_user_cache(api_key, request_id):
+    try:
+        redis = await redis_client.get_redis()
+        await redis.delete(f'user_key:{api_key}')
+        cache_logger.info(
+            f"[{request_id}] Delete user cache",
+            extra={'api_key': api_key[:-10]}
+        )
+    except Exception as e:
+        cache_logger.error(
+            f"[{request_id}]ERROR Delete user", exc_info=e
+        )
 
 
 async def check_ticker_exists(ticker, session) -> int:
@@ -90,7 +115,6 @@ async def check_ticker_exists(ticker, session) -> int:
     # Получение данных по конкретному тикеру
     instrument_data = await redis.hget("instruments", ticker)
     if not instrument_data:
-
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ticker not found")
 
     try:
@@ -98,6 +122,7 @@ async def check_ticker_exists(ticker, session) -> int:
         return instrument["id"]
     except (json.JSONDecodeError, KeyError):
         raise HTTPException(status_code=500, detail="Instrument data corrupted")
+
 
 async def calculate_order_cost(
         r,
@@ -142,14 +167,14 @@ async def calculate_order_cost(
         raise ValueError(f"Недостаточно ликвидности. Осталось неисполненных: {remaining_qty}")
     return total_cost, matched_orders
 
-async def match_limit_order(
-    r,
-    ticker: str,
-    quantity: float,
-    price_limit: float,
-    side: str  # 'BUY' or 'SELL'
-):
 
+async def match_limit_order(
+        r,
+        ticker: str,
+        quantity: float,
+        price_limit: float,
+        side: str  # 'BUY' or 'SELL'
+):
     orderbook_key = f"orderbook:{ticker}:{'asks' if side == 'BUY' else 'bids'}"
 
     if side == 'BUY':

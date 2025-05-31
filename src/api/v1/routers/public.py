@@ -2,13 +2,15 @@ import hashlib
 import json
 import secrets
 from datetime import timezone
+from http.client import HTTPException
 
-from fastapi import APIRouter, status, Depends, BackgroundTasks, Path, Query
+from fastapi import APIRouter, status, Depends, BackgroundTasks, Path, Query, Request
 from sqlalchemy import select
 
 from src import schemas
 from src.db.db import get_async_session, AsyncSession
 from src.db.users import usersManager
+from src.logger import api_logger
 from src.models import TradeLog
 from src.redis_conn import redis_client
 from src.utils.get_resources import get_instruments
@@ -26,24 +28,50 @@ def generate_api_key(username: str) -> str:
 
 
 @router.post("/register", status_code=status.HTTP_201_CREATED, )
-async def registration(user: schemas.UserBase,
+async def registration(request: Request, user: schemas.UserBase,
                        background_tasks: BackgroundTasks,
                        session: AsyncSession = Depends(get_async_session)) -> schemas.UserRegister:
-    api_key = generate_api_key(user.name)
+    request_id = request.state.request_id
+    try:
+        api_key = generate_api_key(user.name)
+        user = await usersManager.create_admin(session, {'name': user.name,
+                                                         'api_key': api_key}, request_id)
 
-    user = await usersManager.create_admin(session, {'name': user.name,
-                                               'api_key': api_key})
+        background_tasks.add_task(load_user_redis, api_key, user, request_id)
+        model = schemas.UserRegister.model_validate(user, from_attributes=True)
 
-    background_tasks.add_task(load_user_redis, api_key, user)
+        api_logger.info(
+            f'[{request_id}] User registered',
+            extra={'user_id': str(model.id)}
+        )
 
-    return schemas.UserRegister.model_validate(user, from_attributes=True)
+        return model
+
+    except Exception as e:
+        api_logger.error(
+            f'[{request_id}] bad registration',
+            exc_info=e
+        )
+
+        raise HTTPException(500)
 
 
 @router.get('/instrument', name='get_instruments')
-async def get_instruments_api(background_tasks: BackgroundTasks,
+async def get_instruments_api(request: Request, background_tasks: BackgroundTasks,
                               session=Depends(get_async_session)) -> list[schemas.InstrumentCreate]:
-    instruments = await get_instruments(session, background_tasks)
-    return instruments
+    request_id = request.state.request_id
+    try:
+        instruments = await get_instruments(session, background_tasks)
+        api_logger.info(
+            f'[{request_id}] Get instruments',
+        )
+        return instruments
+    except Exception as e:
+        api_logger.error(
+            f'[{request_id}] bad get instruments',
+            exc_info=e
+        )
+        raise HTTPException(500)
 
 
 @router.get('/transactions/{ticker}', name='get_instrument')

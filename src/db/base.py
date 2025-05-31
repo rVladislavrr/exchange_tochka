@@ -13,7 +13,7 @@ class BaseManager:
         else:
             self.primary_key = "id"
 
-    async def create(self, session: AsyncSession, data: dict) -> Any:
+    async def create(self, session: AsyncSession, data: dict, request_id) -> Any:
         try:
             instance = self.model(**data)
             session.add(instance)

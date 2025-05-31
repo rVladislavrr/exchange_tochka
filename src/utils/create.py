@@ -1,3 +1,5 @@
+import uuid
+
 from sqlalchemy import select, insert
 from sqlalchemy.exc import IntegrityError
 
@@ -12,9 +14,9 @@ RUB_TICKER = 'RUB'
 async def create_rub():
     async with async_session_maker() as session:
         result = await session.execute(
-            select(Instruments).where(Instruments.ticker == RUB_TICKER)
+            select(Instruments).where(Instruments.ticker == RUB_TICKER, Instruments.is_active == True)
         )
-        rub = result.scalar_one_or_none()
+        rub = result.scalars().one_or_none()
 
         if not rub:
             try:
@@ -26,8 +28,11 @@ async def create_rub():
                     )
                 )
                 await session.commit()
+                print('Создан рубль')
             except IntegrityError:
                 await session.rollback()
+        else:
+            print('RUB уже существует, создание не требуется.')
 
 async def create_admin_user():
     async with async_session_maker() as session:
@@ -45,4 +50,4 @@ async def create_admin_user():
             'name': 'admin',
             'role': RoleEnum.ADMIN,
             'api_key': settings.ADMIN_API_KEY
-        })
+        }, request_id = uuid.uuid4())
