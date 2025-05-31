@@ -4,6 +4,7 @@ from fastapi import HTTPException, status
 
 from src.db.instrumentManager import instrumentsManager
 from src.logger import cache_logger
+from src.models.orders import SideEnum
 from src.redis_conn import redis_client
 from src.utils.custom_serializer import custom_serializer_json
 
@@ -210,3 +211,18 @@ async def match_limit_order(
             break
 
     return total_cost, matched_orders, remaining_qty
+
+def update_match_orders(pipe, matched_orders, ticker, direction):
+    orderbook_key = f"orderbook:{ticker}:{'bids' if direction == SideEnum.SELL else 'asks'}"
+    for item in matched_orders:
+        order_uuid = item.get("uuid")
+        price_old = item.get("price")
+        quantity = item.get("quantity")
+        original_qty = item.get("original_qty")
+        old_entry = f"{int(price_old)}:{int(original_qty)}:{order_uuid}"
+        pipe.zrem(orderbook_key, old_entry)
+
+        remaining_qty = original_qty - quantity
+        if remaining_qty > 0:
+            new_entry = f"{int(price_old)}:{int(remaining_qty)}:{order_uuid}"
+            pipe.zadd(orderbook_key, {new_entry: price_old})

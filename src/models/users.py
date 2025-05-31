@@ -18,7 +18,7 @@ class Users(Base):
 
     name: Mapped[str] = mapped_column(nullable=True, index=False)
     role: Mapped[RoleEnum] = mapped_column(Enum(RoleEnum), nullable=False, index=False, default=RoleEnum.USER)
-    api_key: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    api_key: Mapped[str] = mapped_column(String(255), nullable=False, index=True, unique=True)
 
     # теперь только в UserBalances
         # balance: Mapped[float] = mapped_column(nullable=False, index=True, default=0)

@@ -38,4 +38,5 @@ app.add_middleware(
 
 app.include_router(router, prefix='/api')
 app.add_middleware(AuthMiddleware)
+# старая версия
 app.add_middleware(LoggingMiddleware)

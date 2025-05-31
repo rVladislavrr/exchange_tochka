@@ -1,6 +1,32 @@
 version: "2.1"
 
 services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: exchange_app
+    command: >
+      sh -c "alembic upgrade head &&
+             gunicorn src.main:app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000"
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER}
+      DB_PASS: ${DB_PASS}
+      DB_NAME: ${DB_NAME}
+      REDIS_USER_PASSWORD: ${REDIS_USER_PASSWORD}
+      REDIS_HOST: redis
+    env_file:
+      - .env
+    restart: unless-stopped
+    volumes:
+      - ./logs:/app/logs
   redis:
     image: redis:latest
     container_name: redis_container1
@@ -24,28 +50,9 @@ services:
     ports:
       - "${DB_PORT}:5432"
     volumes:
-      - pg_data:/var/lib/postgresql/data
+      - ./pg_data:/var/lib/postgresql/data
     env_file:
       - .env
-
-  fastapi_app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: fastapi_app1
-    restart: always
-    depends_on:
-      - postgres
-      - redis
-    ports:
-      - "8000:8000"
-    environment:
-      DATABASE_URL: postgresql+asyncpg://${DB_USER}:${DB_PASS}@postgres:5432/${DB_NAME}
-      REDIS_URL: redis://default:${REDIS_USER_PASSWORD}@redis:6379/0
-    env_file:
-      - .env
-    volumes:
-      - .:/app
 
 volumes:
   pg_data:

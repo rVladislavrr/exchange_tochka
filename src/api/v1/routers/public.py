@@ -10,7 +10,7 @@ from sqlalchemy import select
 from src import schemas
 from src.db.db import get_async_session, AsyncSession
 from src.db.users import usersManager
-from src.logger import api_logger
+from src.logger import api_logger, cache_logger
 from src.models import TradeLog
 from src.redis_conn import redis_client
 from src.utils.get_resources import get_instruments
@@ -75,50 +75,88 @@ async def get_instruments_api(request: Request, background_tasks: BackgroundTask
 
 
 @router.get('/transactions/{ticker}', name='get_instrument')
-async def get_transaction(ticker: str = Path(pattern='^[A-Z]{2,10}$'),
+async def get_transaction(request: Request, ticker: str = Path(pattern='^[A-Z]{2,10}$'),
                           limit: int = Query(10, gt=0), session: AsyncSession = Depends(get_async_session)):
-    if limit < 199:
-        r = await redis_client.get_redis()
-        key = f"ticker:{ticker}"
-        raw_data = await r.lrange(key, 0, limit - 1)
-        return [json.loads(tx) for tx in raw_data]
-    else:
-        res = (await session.execute(
-            select(TradeLog).order_by(TradeLog.create_at).limit(limit)
-        )).scalars()
-        return [{"ticker": item.ticker,
-                 "amount": item.quantity,
-                 "price": item.price,
-                 "timestamp": item.create_at.replace(tzinfo=timezone.utc).isoformat()}
-                for item in res]
+    request_id = request.state.request_id
+    try:
+
+        if limit < 199:
+            r = await redis_client.get_redis()
+            key = f"ticker:{ticker}"
+            raw_data = await r.lrange(key, 0, limit - 1)
+            api_logger.info(
+                f'[{request_id}] get_transaction',
+            )
+            return [json.loads(tx) for tx in raw_data]
+        else:
+            res = (await session.execute(
+                select(TradeLog).order_by(TradeLog.create_at).limit(limit)
+            )).scalars()
+            api_logger.info(
+                f'[{request_id}] get_transaction',
+            )
+            return [{"ticker": item.ticker,
+                     "amount": item.quantity,
+                     "price": item.price,
+                     "timestamp": item.create_at.replace(tzinfo=timezone.utc).isoformat()}
+                    for item in res]
+    except Exception as e:
+        api_logger.error(
+            f'[{request_id}] bad get_transaction',
+            exc_info=e
+        )
 
 
-async def get_orderbook_levels(r, ticker: str, limit: int = 10):
-    ask_key = f"orderbook:{ticker}:asks"
-    bid_key = f"orderbook:{ticker}:bids"
+async def get_orderbook_levels(r, ticker: str, request_id, limit: int = 10):
+    try:
+        ask_key = f"orderbook:{ticker}:asks"
+        bid_key = f"orderbook:{ticker}:bids"
 
-    asks = await r.zrange(ask_key, 0, limit - 1, withscores=True)
-    bids = await r.zrevrange(bid_key, 0, limit - 1, withscores=True)
+        asks = await r.zrange(ask_key, 0, limit - 1, withscores=True)
+        bids = await r.zrevrange(bid_key, 0, limit - 1, withscores=True)
 
-    def format_orders(raw_orders):
-        return [
-            {
-                "price": price,
-                "qty": int(order_data.split(":")[1])
-            }
-            for order_data, price in raw_orders
-        ]
-
-    return {
-        "ask_levels": format_orders(asks),
-        "bid_levels": format_orders(bids),
-    }
+        def format_orders(raw_orders):
+            return [
+                {
+                    "price": price,
+                    "qty": int(order_data.split(":")[1])
+                }
+                for order_data, price in raw_orders
+            ]
+        cache_logger.info(
+            f'[{request_id}] get orderbook levels',
+            extra={'ticker': ticker}
+        )
+        return {
+            "ask_levels": format_orders(asks),
+            "bid_levels": format_orders(bids),
+        }
+    except Exception as e:
+        cache_logger.error(
+            f'[{request_id}] bad get orderbook levels',
+            exc_info=e
+        )
+        raise
 
 
 @router.get('/orderbook/{ticker}')
 async def get_orderbook(
+        request: Request,
         ticker: str = Path(pattern='^[A-Z]{2,10}$'),
         limit: int = Query(10, gt=0),
 ):
-    r = await redis_client.get_redis()
-    return await get_orderbook_levels(r, ticker, limit)
+    request_id = request.state.request_id
+    try:
+        r = await redis_client.get_redis()
+        res = await get_orderbook_levels(r, ticker, limit=limit, request_id=request_id)
+        api_logger.info(
+            f'[{request_id}] get_orderbook',
+            extra={'ticker': ticker}
+        )
+        return res
+    except Exception as e:
+        api_logger.error(
+            f'[{request_id}] bad get_orderbook',
+            exc_info=e
+        )
+        raise HTTPException(500)
