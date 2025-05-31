@@ -24,7 +24,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 or request.url.path.endswith("/docs")
                 or request.url.path.endswith("/openapi.json")):
             return await call_next(request)
-
+        request_id = request.state.request_id
         auth_header = request.headers.get("Authorization")
         if not auth_header or not auth_header.startswith("TOKEN "):
             return JSONResponse({"detail": "Missing or invalid token"}, status_code=401)
@@ -44,7 +44,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     if not user:
                         return JSONResponse({"detail": "Missing or invalid token"}, status_code=401)
                     else:
-                        user = await load_user_redis(user.api_key, user)
+                        user = await load_user_redis(user.api_key, user, request_id)
 
         except Exception as e:
             print(e)
