@@ -91,6 +91,7 @@ async def match_order_limit(orderOrm: Orders, ticker: str):
                             ticker=ticker
                         )
                         session.add(trade)
+                        await session.flush()
                         add_tradeLog_redis(pipe, ticker, {
                             "ticker": ticker,
                             "amount": quantity,
@@ -147,6 +148,7 @@ async def match_order_limit(orderOrm: Orders, ticker: str):
                             ticker=ticker
                         )
                         session.add(trade)
+                        await session.flush()
                         add_tradeLog_redis(pipe, ticker, {
                             "ticker": ticker,
                             "amount": quantity,

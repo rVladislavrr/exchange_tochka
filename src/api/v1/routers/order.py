@@ -199,6 +199,7 @@ async def create_order(request: Request, background_tasks: BackgroundTasks,
                     orderOrm = await orderManager.create_orderOrm(user, session, instrument_id, order_data)
                     orderOrm.status = StatusEnum.CANCELLED
                     await session.commit()
+                    await session.close()
                     database_logger.info(
                         f"[{request_id}] Create MarketOrder CANCELLED",
                         extra={'user_id': str(user.id),'order_id': str(orderOrm.uuid)}
@@ -220,6 +221,7 @@ async def create_order(request: Request, background_tasks: BackgroundTasks,
                     orderOrm = await orderManager.create_orderOrm(user, session, instrument_id, order_data)
                     orderOrm.status = StatusEnum.CANCELLED
                     await session.commit()
+                    await session.close()
                     database_logger.info(
                         f"[{request_id}] Create MarketOrder CANCELLED",
                         extra={'user_id': str(user.id), 'order_id': str(orderOrm.uuid)}
@@ -242,12 +244,14 @@ async def create_order(request: Request, background_tasks: BackgroundTasks,
                                             order_data.qty * order_data.price,
                                             userBalanceRub.available_balance))
     except HTTPException as e:
+        await session.close()
         api_logger.warning(
             f"[{request_id}] create order",
             extra={'user_id': str(user.id), 'status_code': e.status_code, 'detail': e.detail,}
         )
         raise
     except Exception as e:
+        await session.close()
         api_logger.error(
             f"[{request_id}] create order failed",
             extra={'user_id': str(user.id),},
@@ -301,6 +305,7 @@ async def create_order(request: Request, background_tasks: BackgroundTasks,
                         ticker=order_data.ticker
                     )
                     session.add(trade)
+                    await session.flush()
                     add_tradeLog_redis(pipe, order_data.ticker, {
                         "ticker": order_data.ticker,
                         "amount": quantity,
@@ -358,6 +363,7 @@ async def create_order(request: Request, background_tasks: BackgroundTasks,
                         ticker=order_data.ticker
                     )
                     session.add(trade)
+                    await session.flush()
                     add_tradeLog_redis(pipe, order_data.ticker, {
                         "ticker": order_data.ticker,
                         "amount": quantity,
@@ -392,4 +398,6 @@ async def create_order(request: Request, background_tasks: BackgroundTasks,
             exc_info=e,
         )
         raise HTTPException(500)
+    finally:
+        await session.close()
 

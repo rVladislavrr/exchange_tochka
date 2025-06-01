@@ -8,7 +8,7 @@ from sqlalchemy import select, and_, or_
 from sqlalchemy.orm import selectinload
 
 from src import schemas
-from src.db.db import get_async_session
+from src.db.db import get_async_session, async_session_maker
 from src.db.instrumentManager import instrumentsManager
 from src.db.users import usersManager
 from src.logger import api_logger, database_logger, cache_logger
@@ -42,6 +42,7 @@ async def add_instrument(request: Request,
                 "id": instrumentORM.id,
             }
         )
+        await session.close()
         return instrumentORM
     except HTTPException as e:
         api_logger.warning(
@@ -59,42 +60,46 @@ async def add_instrument(request: Request,
             exc_info=e
         )
         raise HTTPException(500)
+    finally:
+        await session.close()
 
 
-async def cancel_order_deleted_user(user_id, session: AsyncSession, request_id):
+async def cancel_order_deleted_user(user_id, request_id):
     try:
-        res = await session.execute(select(Orders).options(selectinload(Orders.instrument)).where(
-            Orders.user_uuid == user_id,
-            or_(
-                Orders.status == StatusEnum.NEW,
-                Orders.status == StatusEnum.PARTIALLY_EXECUTED
+        async with async_session_maker() as session:
+            res = await session.execute(select(Orders).options(selectinload(Orders.instrument)).where(
+                Orders.user_uuid == user_id,
+                or_(
+                    Orders.status == StatusEnum.NEW,
+                    Orders.status == StatusEnum.PARTIALLY_EXECUTED
+                )
             )
-        )
-        )
-        orders = res.scalars()
-        r = await redis_client.get_redis()
-        pipe = r.pipeline()
+            )
+            orders = res.scalars()
+            r = await redis_client.get_redis()
+            pipe = r.pipeline()
 
-        for order in orders:
-            key = f"{int(order.price)}:{int(order.qty - order.filled)}:{order.uuid}"
-            orderbook_key = f"orderbook:{order.ticker}:{'asks' if order.side == SideEnum.SELL else 'bids'}"
-            pipe.zrem(orderbook_key, key)
-            old_status = order.status
-            order.status = StatusEnum.CANCELLED
-            database_logger.info(
-                f"[{request_id}] Cancel Order (user)",
-                extra={"id ": str(order.uuid), "old status": old_status.value, 'user_id': str(user_id),
-                       "side": order.side.value,
-                       "ticker": order.ticker,
-                       "price": order.price}
-            )
-            cache_logger.info(
-                f"[{request_id}] Cancel Order  (user) cache ",
-                extra={"orderbook_key": orderbook_key, "key": key}
-            )
+            for order in orders:
+                key = f"{int(order.price)}:{int(order.qty - order.filled)}:{order.uuid}"
+                orderbook_key = f"orderbook:{order.ticker}:{'asks' if order.side == SideEnum.SELL else 'bids'}"
+                pipe.zrem(orderbook_key, key)
+                old_status = order.status
+                order.status = StatusEnum.CANCELLED
+                database_logger.info(
+                    f"[{request_id}] Cancel Order (user)",
+                    extra={"id ": str(order.uuid), "old status": old_status.value, 'user_id': str(user_id),
+                           "side": order.side.value,
+                           "ticker": order.ticker,
+                           "price": order.price}
+                )
+                cache_logger.info(
+                    f"[{request_id}] Cancel Order  (user) cache ",
+                    extra={"orderbook_key": orderbook_key, "key": key}
+                )
 
-        await pipe.execute()
-        await session.commit()
+            await pipe.execute()
+            await session.commit()
+            await session.close()
     except Exception as e:
         database_logger.error(
             f"[{request_id}] Cancel Order (DELETE USER)",
@@ -132,7 +137,7 @@ async def delete_user(request: Request, user_id: UUID4,
             )
 
             backgroundTasks.add_task(clear_user_cache, user.api_key, request_id)
-            backgroundTasks.add_task(cancel_order_deleted_user, user.uuid, session, request_id)
+            backgroundTasks.add_task(cancel_order_deleted_user, user.uuid, request_id)
 
             api_logger.info(
                 f"[{request.state.request_id}] Delete user",
@@ -140,7 +145,7 @@ async def delete_user(request: Request, user_id: UUID4,
                     "user_id": str(user_id),
                 }
             )
-
+            await session.close()
             return user
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     except HTTPException as e:
@@ -159,57 +164,61 @@ async def delete_user(request: Request, user_id: UUID4,
             exc_info=e
         )
         raise HTTPException(500)
+    finally:
+        await session.close()
 
 
-async def cancel_order_deleted_ticker(id_instrument, session, request_id):
+async def cancel_order_deleted_ticker(id_instrument, request_id):
     try:
-        res = await session.execute(
-            select(Instruments).options(selectinload(Instruments.orders))
-            .where(
-                Instruments.id == id_instrument,
-            )
-        )
-        instruments = res.scalar_one_or_none()
-        r = await redis_client.get_redis()
-        pipe = r.pipeline()
-
-        for order in instruments.orders:
-            if order.status == StatusEnum.EXECUTED or order.status == StatusEnum.CANCELLED:
-                continue
-            key = f"{int(order.price)}:{int(order.qty - order.filled)}:{order.uuid}"
-            orderbook_key = f"orderbook:{order.ticker}:{'asks' if order.side == SideEnum.SELL else 'bids'}"
-            order.status = StatusEnum.CANCELLED
-            pipe.zrem(orderbook_key, key)
-
-            cache_logger.info(
-                f"[{request_id}] cancel order (instrument)",
-                extra={"orderbook_key": orderbook_key, 'key': key}
-            )
-
-            if order.side == SideEnum.BUY:
-                userBalanceRUB = await usersManager.get_user_balance_by_ticker(
-                    session, order.user_uuid, ticker='RUB', create_if_missing=True
+        async with async_session_maker() as session:
+            res = await session.execute(
+                select(Instruments).options(selectinload(Instruments.orders))
+                .where(
+                    Instruments.id == id_instrument,
                 )
-                userBalanceRUB.frozen_balance -= order.price * (order.qty - order.filled)
-                userBalanceRUB.available_balance += order.price * (order.qty - order.filled)
+            )
+            instruments = res.scalar_one_or_none()
+            r = await redis_client.get_redis()
+            pipe = r.pipeline()
+
+            for order in instruments.orders:
+                if order.status == StatusEnum.EXECUTED or order.status == StatusEnum.CANCELLED:
+                    continue
+                key = f"{int(order.price)}:{int(order.qty - order.filled)}:{order.uuid}"
+                orderbook_key = f"orderbook:{order.ticker}:{'asks' if order.side == SideEnum.SELL else 'bids'}"
+                order.status = StatusEnum.CANCELLED
+                pipe.zrem(orderbook_key, key)
+
+                cache_logger.info(
+                    f"[{request_id}] cancel order (instrument)",
+                    extra={"orderbook_key": orderbook_key, 'key': key}
+                )
+
+                if order.side == SideEnum.BUY:
+                    userBalanceRUB = await usersManager.get_user_balance_by_ticker(
+                        session, order.user_uuid, ticker='RUB', create_if_missing=True
+                    )
+                    userBalanceRUB.frozen_balance -= order.price * (order.qty - order.filled)
+                    userBalanceRUB.available_balance += order.price * (order.qty - order.filled)
+                    database_logger.info(
+                        "Update balance(Cancel Order instrument)",
+                        extra={
+                            "user_id": str(order.user_uuid),
+                            "ticker": order.ticker,
+                            "available_balance +=": order.price * (order.qty - order.filled),
+                            "frozen_balance -=": order.price * (order.qty - order.filled)
+                        }
+                    )
                 database_logger.info(
-                    "Update balance(Cancel Order instrument)",
-                    extra={
-                        "user_id": str(order.user_uuid),
-                        "ticker": order.ticker,
-                        "available_balance +=": order.price * (order.qty - order.filled),
-                        "frozen_balance -=": order.price * (order.qty - order.filled)
-                    }
+                    f"[{request_id}] Cancel Order ( instrument )",
+                    extra={"id ": str(order.uuid), 'user_id': str(order.user_uuid),
+                           "side": order.side.value,
+                           "ticker": order.ticker,
+                           "price": order.price}
                 )
-            database_logger.info(
-                f"[{request_id}] Cancel Order ( instrument )",
-                extra={"id ": str(order.uuid), 'user_id': str(order.user_id),
-                       "side": order.side.value,
-                       "ticker": order.ticker,
-                       "price": order.price}
-            )
-        await pipe.execute()
-        await session.commit()
+            await pipe.execute()
+            await session.commit()
+            await session.close()
     except Exception as e:
         database_logger.error(
             f"[{request_id}] Cancel Order (DELETE instrument)",
@@ -218,6 +227,8 @@ async def cancel_order_deleted_ticker(id_instrument, session, request_id):
         cache_logger.info(
             f"[{request_id}] Cancel Order CACHE (DELETE instrument)",
             exc_info=e)
+    finally:
+        await session.close()
 
 
 @router.delete('/instrument/{ticker}')
@@ -228,7 +239,7 @@ async def delete_instrument(request: Request, backgroundTasks: BackgroundTasks,
         request_id = request.state.request_id
         deleted_instruments = await instrumentsManager.delete(ticker, session, request_id)
         backgroundTasks.add_task(update_cache_after_delete, ticker, request_id)
-        backgroundTasks.add_task(cancel_order_deleted_ticker, deleted_instruments.id, session, request_id)
+        backgroundTasks.add_task(cancel_order_deleted_ticker, deleted_instruments.id, request_id)
         api_logger.info(
             f"[{request.state.request_id}] Delete instrument",
             extra={
@@ -236,6 +247,7 @@ async def delete_instrument(request: Request, backgroundTasks: BackgroundTasks,
                 'id': deleted_instruments.id
             }
         )
+        await session.close()
         return BaseAnswer()
     except HTTPException as e:
         api_logger.warning(
@@ -253,6 +265,8 @@ async def delete_instrument(request: Request, backgroundTasks: BackgroundTasks,
             exc_info=e
         )
         raise HTTPException(500)
+    finally:
+        await session.close()
 
 
 @router.post('/balance/deposit')
@@ -316,10 +330,12 @@ async def deposit(request: Request, deposit_obj: Deposit,
                     'amount': deposit_obj.amount,
                 }
             )
+            await session.close()
 
             return BaseAnswer()
 
         if not instrument:
+            await session.close()
             raise HTTPException(404, "Instrument not found")
 
         try:
@@ -345,6 +361,8 @@ async def deposit(request: Request, deposit_obj: Deposit,
         except SQLAlchemyError as e:
             await session.rollback()
             raise e
+        finally:
+            await session.close()
 
         api_logger.info(
             f"[{request.state.request_id}] Deposit",
@@ -371,6 +389,8 @@ async def deposit(request: Request, deposit_obj: Deposit,
             exc_info=e
         )
         raise HTTPException(500)
+    finally:
+        await session.close()
 
 
 @router.post('/balance/withdraw')
@@ -408,6 +428,8 @@ async def withdraw(deposit_obj: Deposit,
         except SQLAlchemyError as e:
             await session.rollback()
             raise e
+        finally:
+            await session.close()
 
         api_logger.info(
             f"[{request.state.request_id}] Withdraw",
@@ -435,3 +457,5 @@ async def withdraw(deposit_obj: Deposit,
         )
 
         raise HTTPException(500)
+    finally:
+        await session.close()

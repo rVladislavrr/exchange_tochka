@@ -41,10 +41,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
             else:
                 async with async_session_maker() as session:
                     user = await usersManager.get_user_apikey(token, session)
+                    await session.close()
                     if not user:
                         return JSONResponse({"detail": "Missing or invalid token"}, status_code=401)
                     else:
                         user = await load_user_redis(user.api_key, user, request_id)
+
 
         except Exception as e:
             print(e)

@@ -43,3 +43,5 @@ async def get_balance(request: Request,
             exc_info=e,
         )
         raise HTTPException(500)
+    finally:
+        await session.close()

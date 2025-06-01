@@ -105,6 +105,8 @@ async def get_transaction(request: Request, ticker: str = Path(pattern='^[A-Z]{2
             f'[{request_id}] bad get_transaction',
             exc_info=e
         )
+    finally:
+        await session.close()
 
 
 async def get_orderbook_levels(r, ticker: str, request_id, limit: int = 10):
@@ -160,3 +162,5 @@ async def get_orderbook(
             exc_info=e
         )
         raise HTTPException(500)
+    finally:
+        await session.close()
