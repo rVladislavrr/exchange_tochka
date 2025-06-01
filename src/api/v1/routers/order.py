@@ -284,14 +284,14 @@ async def create_order(request: Request, background_tasks: BackgroundTasks,
                         select(Orders).where(Orders.uuid == buy_order_uuid)
                     )
                     buy_order = order_result.scalar_one()
+                    rub_balance = await usersManager.get_user_balance_by_ticker(
+                        session, buy_order.user_uuid, ticker="RUB", create_if_missing=True
+                    )
 
                     buy_balance = await usersManager.get_user_balance_by_ticker(
                         session, buy_order.user_uuid, ticker=order_data.ticker, create_if_missing=True
                     )
 
-                    rub_balance = await usersManager.get_user_balance_by_ticker(
-                        session, buy_order.user_uuid, ticker="RUB", create_if_missing=True
-                    )
 
                     rub_balance.frozen_balance -= total_cost
                     buy_balance.available_balance += quantity
@@ -343,12 +343,12 @@ async def create_order(request: Request, background_tasks: BackgroundTasks,
 
                     sell_order = order_result.scalar_one()
 
-                    sell_balance = await usersManager.get_user_balance_by_ticker(
-                        session, sell_order.user_uuid, ticker=order_data.ticker, create_if_missing=True
-                    )
-
                     rub_balance = await usersManager.get_user_balance_by_ticker(
                         session, sell_order.user_uuid, ticker="RUB", create_if_missing=True
+                    )
+
+                    sell_balance = await usersManager.get_user_balance_by_ticker(
+                        session, sell_order.user_uuid, ticker=order_data.ticker, create_if_missing=True
                     )
 
                     rub_balance.available_balance += total_cost

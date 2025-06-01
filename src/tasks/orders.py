@@ -72,12 +72,12 @@ async def match_order_limit(orderOrm: Orders, ticker: str):
                         )
                         buy_order = order_result.scalar_one()
 
-                        buy_balance = await usersManager.get_user_balance_by_ticker(
-                            session, buy_order.user_uuid, ticker=ticker, create_if_missing=True
-                        )
-
                         rub_balance = await usersManager.get_user_balance_by_ticker(
                             session, buy_order.user_uuid, ticker="RUB", create_if_missing=True
+                        )
+
+                        buy_balance = await usersManager.get_user_balance_by_ticker(
+                            session, buy_order.user_uuid, ticker=ticker, create_if_missing=True
                         )
 
                         rub_balance.frozen_balance -= cost
@@ -128,13 +128,13 @@ async def match_order_limit(orderOrm: Orders, ticker: str):
 
                         sell_order = order_result.scalar_one()
 
+                        rub_balance = await usersManager.get_user_balance_by_ticker(
+                            session, sell_order.user_uuid, ticker="RUB", create_if_missing=True
+                        )
                         sell_balance = await usersManager.get_user_balance_by_ticker(
                             session, sell_order.user_uuid, ticker=ticker, create_if_missing=True
                         )
 
-                        rub_balance = await usersManager.get_user_balance_by_ticker(
-                            session, sell_order.user_uuid, ticker="RUB", create_if_missing=True
-                        )
 
                         rub_balance.available_balance += cost
 
