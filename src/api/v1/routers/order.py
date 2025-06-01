@@ -235,7 +235,7 @@ async def create_order(request: Request, background_tasks: BackgroundTasks,
                 if total_cost > userBalanceRub.available_balance:
                     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Not enough balance total_cost = '
                                                                                         '{}, your balance = {}'
-                                        .format(order_data.qty * order_data.price, userBalanceRub.available_balance))
+                                        .format(total_cost, userBalanceRub.available_balance))
             else:
                 # при лимитном просто перемножаем и проверяем есть ли у пользователя такое колво денег
                 if order_data.qty * order_data.price > userBalanceRub.available_balance:

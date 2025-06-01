@@ -61,10 +61,11 @@ class UsersManager(BaseManager):
             select(UserBalances)
             .where(
                 UserBalances.user_uuid == user_uuid,
-                UserBalances.instrument_id == instrument_id
+                UserBalances.instrument_id == instrument_id,
+
             )
         )
-        balance = balance_result.scalar_one_or_none()
+        balance = balance_result.scalars().first()
 
         if balance is None and create_if_missing:
             balance = UserBalances(
