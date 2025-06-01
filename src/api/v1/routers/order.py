@@ -320,7 +320,7 @@ async def create_order(request: Request, background_tasks: BackgroundTasks,
                     else:
                         buy_order.status = StatusEnum.PARTIALLY_EXECUTED
 
-                await session.commit()
+                    await session.commit()
                 await pipe.execute()
             else:  # order_data.direction == Direction.BUY
 
@@ -378,7 +378,7 @@ async def create_order(request: Request, background_tasks: BackgroundTasks,
                     else:
                         sell_order.status = StatusEnum.PARTIALLY_EXECUTED
 
-                await session.commit()
+                    await session.commit()
                 await pipe.execute()
 
         else:

@@ -112,7 +112,7 @@ async def match_order_limit(orderOrm: Orders, ticker: str):
                         if remaining_qty > 0:
                             new_entry = f"{int(price)}:{int(remaining_qty)}:{buy_order_uuid}"
                             pipe.zadd(orderbook_key, {new_entry: price})
-
+                        await session.commit()
                 else:
                     for item in matched_orders:
 
@@ -169,7 +169,7 @@ async def match_order_limit(orderOrm: Orders, ticker: str):
                         if remaining_qty > 0:
                             new_entry = f"{int(price)}:{int(remaining_qty)}:{sell_order_uuid}"
                             pipe.zadd(orderbook_key, {new_entry: price})
-
+                        await session.commit()
             if orderOrm.side == SideEnum.BUY:
                 # Списали уже реально потраченное в userBalanceRUB.available_balance -= total_cost выше
                 # Теперь заморозить только остаток заявки на будущие сделки
