@@ -35,6 +35,7 @@ async def match_order_limit(orderOrm: Orders, ticker: str):
                                                                                       orderOrm.qty, orderOrm.price,
                                                                                       orderOrm.side.value)
             if matched_orders:
+
                 orderOrm = await session.get(Orders, orderOrm.uuid)
                 orderOrm.status = StatusEnum.EXECUTED if remaining_qty_order == 0 else StatusEnum.PARTIALLY_EXECUTED
                 if orderOrm.status == StatusEnum.EXECUTED:
@@ -50,7 +51,7 @@ async def match_order_limit(orderOrm: Orders, ticker: str):
                     # Для покупки списываем только реально потраченное
                     userBalanceRUB.available_balance -= total_cost
                     userBalanceTicker.available_balance += (orderOrm.qty - remaining_qty_order)
-
+                await session.commit()
                 # if (userBalanceTicker.available_balance <= 0
                 #         and userBalanceTicker.frozen_balance <= 0):
                 #     await session.delete(userBalanceTicker)

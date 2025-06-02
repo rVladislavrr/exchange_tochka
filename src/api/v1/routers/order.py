@@ -272,7 +272,7 @@ async def create_order(request: Request, background_tasks: BackgroundTasks,
                 userBalanceTicker.available_balance -= order_data.qty
 
                 pipe = r.pipeline()
-
+                await session.commit()
                 for item in matched_orders:
 
                     buy_order_uuid = item.get("uuid")
@@ -329,7 +329,7 @@ async def create_order(request: Request, background_tasks: BackgroundTasks,
 
 
                 pipe = r.pipeline()
-
+                await session.commit()
                 for item in matched_orders:
 
                     sell_order_uuid = item.get("uuid")
