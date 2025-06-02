@@ -36,7 +36,9 @@ async def update_instruments_cache(instruments):
 async def update_cache_after_delete(ticker: str, request_id):
     try:
         redis = await redis_client.get_redis()
-
+        await redis.delete(f"ticker:{ticker}")
+        await redis.delete(f"orderbook:{ticker}:asks")
+        await redis.delete(f"orderbook:{ticker}:bids")
         await redis.hdel("instruments", ticker)
 
         await redis.expire("instruments", 420)
@@ -132,6 +134,7 @@ async def calculate_order_cost(
         side: str,  # 'BUY' или 'SELL'
 ):
     orderbook_key = f"orderbook:{ticker}:{'asks' if side == 'BUY' else 'bids'}"
+
 
     if side == 'BUY':
         orders = await r.zrange(orderbook_key, 0, -1, withscores=True)
