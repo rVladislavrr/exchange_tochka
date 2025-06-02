@@ -167,7 +167,6 @@ async def get_list_orders(request: Request,
 async def create_order(request: Request, background_tasks: BackgroundTasks,
                        order_data: LimitOrder | MarketOrder,
                        session: AsyncSession = Depends(get_async_session)):
-
     r = await redis_client.get_redis()
     user = request.state.user
     request_id = request.state.request_id
@@ -202,7 +201,7 @@ async def create_order(request: Request, background_tasks: BackgroundTasks,
                     await session.close()
                     database_logger.info(
                         f"[{request_id}] Create MarketOrder CANCELLED",
-                        extra={'user_id': str(user.id),'order_id': str(orderOrm.uuid)}
+                        extra={'user_id': str(user.id), 'order_id': str(orderOrm.uuid)}
                     )
                     api_logger.info(
                         f"[{request_id}] create order CANCELLED",
@@ -211,7 +210,8 @@ async def create_order(request: Request, background_tasks: BackgroundTasks,
                     return {"order_id": orderOrm.uuid,
                             "success": True}
 
-        else:
+
+        else:  # order_data.direction == SideEnum.BUY
             if isinstance(order_data, MarketOrder):
                 # при рыночном пытаемся собрать самую дешёвую покупку и проверяем от этого его баланс
                 try:
@@ -233,8 +233,9 @@ async def create_order(request: Request, background_tasks: BackgroundTasks,
                     return {"order_id": orderOrm.uuid,
                             "success": True}
                 if total_cost > userBalanceRub.available_balance:
-                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Not enough balance total_cost = '
-                                                                                        '{}, your balance = {}'
+                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                        detail='Not enough balance total_cost = '
+                                               '{}, your balance = {}'
                                         .format(total_cost, userBalanceRub.available_balance))
             else:
                 # при лимитном просто перемножаем и проверяем есть ли у пользователя такое колво денег
@@ -247,14 +248,14 @@ async def create_order(request: Request, background_tasks: BackgroundTasks,
         await session.close()
         api_logger.warning(
             f"[{request_id}] create order",
-            extra={'user_id': str(user.id), 'status_code': e.status_code, 'detail': e.detail,}
+            extra={'user_id': str(user.id), 'status_code': e.status_code, 'detail': e.detail, }
         )
         raise
     except Exception as e:
         await session.close()
         api_logger.error(
             f"[{request_id}] create order failed",
-            extra={'user_id': str(user.id),},
+            extra={'user_id': str(user.id), },
             exc_info=e
         )
         raise HTTPException(500)
@@ -271,8 +272,8 @@ async def create_order(request: Request, background_tasks: BackgroundTasks,
                 userBalanceRub.available_balance += total_cost
                 userBalanceTicker.available_balance -= order_data.qty
 
-                pipe = r.pipeline()
                 await session.commit()
+                pipe = r.pipeline()
                 for item in matched_orders:
 
                     buy_order_uuid = item.get("uuid")
@@ -291,7 +292,6 @@ async def create_order(request: Request, background_tasks: BackgroundTasks,
                     buy_balance = await usersManager.get_user_balance_by_ticker(
                         session, buy_order.user_uuid, ticker=order_data.ticker, create_if_missing=True
                     )
-
 
                     rub_balance.frozen_balance -= total_cost
                     buy_balance.available_balance += quantity
@@ -327,9 +327,8 @@ async def create_order(request: Request, background_tasks: BackgroundTasks,
                 userBalanceRub.available_balance -= total_cost
                 userBalanceTicker.available_balance += orderOrm.qty
 
-
-                pipe = r.pipeline()
                 await session.commit()
+                pipe = r.pipeline()
                 for item in matched_orders:
 
                     sell_order_uuid = item.get("uuid")
@@ -382,7 +381,7 @@ async def create_order(request: Request, background_tasks: BackgroundTasks,
                 await pipe.execute()
 
         else:
-            background_tasks.add_task(match_order_limit, orderOrm, order_data.ticker)
+            background_tasks.add_task(match_order_limit, orderOrm, order_data.ticker, request_id)
             await session.commit()
         return {"order_id": orderOrm.uuid,
                 "success": True}
@@ -400,4 +399,3 @@ async def create_order(request: Request, background_tasks: BackgroundTasks,
         raise HTTPException(500)
     finally:
         await session.close()
-

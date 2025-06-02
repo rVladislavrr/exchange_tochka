@@ -34,7 +34,7 @@ async def registration(request: Request, user: schemas.UserBase,
     request_id = request.state.request_id
     try:
         api_key = generate_api_key(user.name)
-        user = await usersManager.create_admin(session, {'name': user.name,
+        user = await usersManager.create(session, {'name': user.name,
                                                          'api_key': api_key}, request_id)
 
         background_tasks.add_task(load_user_redis, api_key, user, request_id)

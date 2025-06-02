@@ -24,17 +24,23 @@ class UsersManager(BaseManager):
         pass
 
     async def create(self, session: AsyncSession, data: dict, request_id) -> Any:
-        user = await super().create(session, data, request_id)
-        instrument_id = await check_ticker_exists("RUB", session)
-        userBalances = UserBalances(
-            user_uuid=user.uuid,
-            instrument_id=instrument_id,
-            available_balance=0,
-            frozen_balance=0,
-        )
-        session.add(userBalances)
-        await session.commit()
-        return user
+        try:
+            user = await super().create(session, data, request_id)
+            instrument_id = await check_ticker_exists("RUB", session)
+            userBalances = UserBalances(
+                user_uuid=user.uuid,
+                instrument_id=instrument_id,
+                available_balance=0,
+                frozen_balance=0,
+            )
+            database_logger.info(f'[{request_id}] User registration', extra={"user_id":
+                                                                                 str(user.uuid)})
+            session.add(userBalances)
+            await session.commit()
+            return user
+        except Exception as e:
+            database_logger.error(f'[{request_id}] Bad registration', exc_info=e)
+            raise
 
     async def create_admin(self, session: AsyncSession, data: dict, request_id) -> Any:
         try:
