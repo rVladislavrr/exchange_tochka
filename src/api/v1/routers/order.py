@@ -65,7 +65,8 @@ async def cancel_order(request: Request,
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
 
         try:
-            orderOrm = await session.get(Orders, order_id)
+            query = select(Orders).options(selectinload(Orders.instrument)).where(Orders.uuid == order_id,)
+            orderOrm = (await session.execute(query)).scalar_one()
             key = f"{int(orderOrm.price)}:{int(orderOrm.qty - orderOrm.filled)}:{orderOrm.uuid}"
             orderbook_key = f"orderbook:{orderOrm.ticker}:{'asks' if orderOrm.side == SideEnum.SELL else 'bids'}"
 
