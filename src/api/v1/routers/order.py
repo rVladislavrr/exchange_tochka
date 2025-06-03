@@ -1,5 +1,3 @@
-from datetime import timezone
-
 from fastapi import APIRouter, Request, Depends, HTTPException, BackgroundTasks, status
 from pydantic import UUID4
 from sqlalchemy import select
@@ -10,12 +8,12 @@ from src.db.db import get_async_session
 from src.db.orderManager import orderManager
 from src.db.users import usersManager
 from src.logger import api_logger, cache_logger, database_logger
-from src.models import Orders, TradeLog, Users
+from src.models import Orders, Users
 from src.models.orders import SideEnum, StatusEnum
 from src.redis_conn import redis_client
 from src.schemas.order import MarketOrder, LimitOrder, create_GetOrder
-from src.tasks.orders import match_order_limit, add_tradeLog_redis
-from src.utils.redis_utils import check_ticker_exists, calculate_order_cost, update_match_orders
+from src.tasks.orders import match_order_limit, execution_orders
+from src.utils.redis_utils import check_ticker_exists, calculate_order_cost
 from src.tasks.celery_tasks import match_order_limit2
 
 router = APIRouter(prefix="/order", tags=["orders"])
@@ -60,24 +58,17 @@ async def cancel_order(request: Request,
                        order_id: UUID4, session: AsyncSession = Depends(get_async_session)):
     request_id = request.state.request_id
     try:
-        orderOrm = (await session.execute(
-            select(Orders).options(selectinload(Orders.instrument)).where(Orders.uuid == order_id, )
-        )).scalar_one_or_none()
+        r = await redis_client.get_redis()
+        order = await r.hget('active_orders', str(order_id))
 
-        if not orderOrm:
+        if not order:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
 
-        if str(orderOrm.user_uuid) != str(request.state.user.id) and request.state.user.role != "ADMIN":
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
-
-        if orderOrm.status in {StatusEnum.EXECUTED, StatusEnum.CANCELLED}:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST)
-
         try:
+            orderOrm = await session.get(Orders, order_id)
             key = f"{int(orderOrm.price)}:{int(orderOrm.qty - orderOrm.filled)}:{orderOrm.uuid}"
             orderbook_key = f"orderbook:{orderOrm.ticker}:{'asks' if orderOrm.side == SideEnum.SELL else 'bids'}"
 
-            r = await redis_client.get_redis()
             pipe = r.pipeline()
             pipe.zrem(orderbook_key, key)
             await pipe.execute()
@@ -160,6 +151,23 @@ async def get_list_orders(request: Request,
         )
         raise HTTPException(500)
 
+async def create_cancel_order(user, session, instrument_id, order_data, request_id):
+    try:
+        orderOrm = await orderManager.create_orderOrm(user, session, instrument_id, order_data)
+        orderOrm.status = StatusEnum.CANCELLED
+        await session.flush()
+        database_logger.info(
+            f"[{request_id}] Create MarketOrder CANCELLED",
+            extra={'user_id': str(user.id), 'order_id': str(orderOrm.uuid)}
+        )
+        return orderOrm
+    except Exception as e:
+        database_logger.error(
+            f"[{request_id}] Create MarketOrder CANCELLED",
+            extra={'user_id': str(user.id), 'instrument_id':str(instrument_id)}
+        )
+
+
 
 # TODO: фоновые задачи будут в celery, но пока в background_tasks
 # TODO: раскидать на множество функций но пока чёт так лень
@@ -172,7 +180,6 @@ async def create_order(request: Request, background_tasks: BackgroundTasks,
     request_id = request.state.request_id
     try:
         instrument_id = await check_ticker_exists(order_data.ticker, session)
-
         userBalanceRub = await usersManager.get_user_balance_by_ticker(
             session, user.id, ticker="RUB", create_if_missing=True
         )
@@ -195,21 +202,16 @@ async def create_order(request: Request, background_tasks: BackgroundTasks,
                     total_cost, matched_orders = await calculate_order_cost(r, order_data.ticker,
                                                                             order_data.qty, order_data.direction.value)
                 except ValueError as e:
-                    orderOrm = await orderManager.create_orderOrm(user, session, instrument_id, order_data)
-                    orderOrm.status = StatusEnum.CANCELLED
+                    orderOrm = await create_cancel_order(user, session, instrument_id, order_data, request_id)
                     await session.commit()
                     await session.close()
-                    database_logger.info(
-                        f"[{request_id}] Create MarketOrder CANCELLED",
-                        extra={'user_id': str(user.id), 'order_id': str(orderOrm.uuid)}
-                    )
+
                     api_logger.info(
                         f"[{request_id}] create order CANCELLED",
                         extra={'user_id': str(user.id), 'order_id': str(orderOrm.uuid)}
                     )
                     return {"order_id": orderOrm.uuid,
                             "success": True}
-
 
         else:  # order_data.direction == SideEnum.BUY
             if isinstance(order_data, MarketOrder):
@@ -218,14 +220,9 @@ async def create_order(request: Request, background_tasks: BackgroundTasks,
                     total_cost, matched_orders = await calculate_order_cost(r, order_data.ticker,
                                                                             order_data.qty, order_data.direction.value)
                 except ValueError as e:
-                    orderOrm = await orderManager.create_orderOrm(user, session, instrument_id, order_data)
-                    orderOrm.status = StatusEnum.CANCELLED
+                    orderOrm = await create_cancel_order(user, session, instrument_id, order_data, request_id)
                     await session.commit()
                     await session.close()
-                    database_logger.info(
-                        f"[{request_id}] Create MarketOrder CANCELLED",
-                        extra={'user_id': str(user.id), 'order_id': str(orderOrm.uuid)}
-                    )
                     api_logger.info(
                         f"[{request_id}] create order CANCELLED",
                         extra={'user_id': str(user.id), 'order_id': str(orderOrm.uuid)}
@@ -237,7 +234,7 @@ async def create_order(request: Request, background_tasks: BackgroundTasks,
                                         detail='Not enough balance total_cost = '
                                                '{}, your balance = {}'
                                         .format(total_cost, userBalanceRub.available_balance))
-            else:
+            else:  # isinstance(order_data, LimitOrder)
                 # при лимитном просто перемножаем и проверяем есть ли у пользователя такое колво денег
                 if order_data.qty * order_data.price > userBalanceRub.available_balance:
                     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
@@ -247,7 +244,7 @@ async def create_order(request: Request, background_tasks: BackgroundTasks,
     except HTTPException as e:
         await session.close()
         api_logger.warning(
-            f"[{request_id}] create order",
+            f"[{request_id}] create order | balance",
             extra={'user_id': str(user.id), 'status_code': e.status_code, 'detail': e.detail, }
         )
         raise
@@ -262,123 +259,9 @@ async def create_order(request: Request, background_tasks: BackgroundTasks,
     try:
         orderOrm = await orderManager.create_orderOrm(user, session, instrument_id, order_data)
         if isinstance(order_data, MarketOrder):
-            # быстрое обновление тк точно знаем что выполниться
-            pipe = r.pipeline()
-            update_match_orders(pipe, matched_orders, order_data.ticker, order_data.direction)
-            await pipe.execute()
-
-            # рыночная продажа
-            if order_data.direction == SideEnum.SELL:
-                userBalanceRub.available_balance += total_cost
-                userBalanceTicker.available_balance -= order_data.qty
-
-                await session.commit()
-                pipe = r.pipeline()
-                for item in matched_orders:
-
-                    buy_order_uuid = item.get("uuid")
-                    price = item.get("price")
-                    quantity = item.get("quantity")
-                    total_cost = item.get("cost")
-
-                    order_result = await session.execute(
-                        select(Orders).where(Orders.uuid == buy_order_uuid)
-                    )
-                    buy_order = order_result.scalar_one()
-                    rub_balance = await usersManager.get_user_balance_by_ticker(
-                        session, buy_order.user_uuid, ticker="RUB", create_if_missing=True
-                    )
-
-                    buy_balance = await usersManager.get_user_balance_by_ticker(
-                        session, buy_order.user_uuid, ticker=order_data.ticker, create_if_missing=True
-                    )
-
-                    rub_balance.frozen_balance -= total_cost
-                    buy_balance.available_balance += quantity
-
-                    # 3. Добавить в TradeLog
-                    trade = TradeLog(
-                        sell_order_id=orderOrm.uuid,
-                        buy_order_id=buy_order.uuid,
-                        price=price,
-                        quantity=quantity,
-                        ticker=order_data.ticker
-                    )
-                    session.add(trade)
-                    await session.flush()
-                    add_tradeLog_redis(pipe, order_data.ticker, {
-                        "ticker": order_data.ticker,
-                        "amount": quantity,
-                        "price": price,
-                        "timestamp": trade.create_at.replace(tzinfo=timezone.utc).isoformat(),
-                    })
-
-                    # 4. Обновить статус ордера, если исполнен
-                    buy_order.filled = (buy_order.filled or 0) + quantity
-                    if buy_order.filled >= buy_order.qty:
-                        buy_order.status = StatusEnum.EXECUTED
-                    else:
-                        buy_order.status = StatusEnum.PARTIALLY_EXECUTED
-
-                    await session.commit()
-                await pipe.execute()
-            else:  # order_data.direction == Direction.BUY
-
-                userBalanceRub.available_balance -= total_cost
-                userBalanceTicker.available_balance += orderOrm.qty
-
-                await session.commit()
-                pipe = r.pipeline()
-                for item in matched_orders:
-
-                    sell_order_uuid = item.get("uuid")
-                    price = item.get("price")
-                    quantity = item.get("quantity")
-                    total_cost = item.get("cost")
-
-                    order_result = await session.execute(
-                        select(Orders).where(Orders.uuid == sell_order_uuid)
-                    )
-
-                    sell_order = order_result.scalar_one()
-
-                    rub_balance = await usersManager.get_user_balance_by_ticker(
-                        session, sell_order.user_uuid, ticker="RUB", create_if_missing=True
-                    )
-
-                    sell_balance = await usersManager.get_user_balance_by_ticker(
-                        session, sell_order.user_uuid, ticker=order_data.ticker, create_if_missing=True
-                    )
-
-                    rub_balance.available_balance += total_cost
-                    sell_balance.frozen_balance -= quantity
-
-                    # 3. Добавить в TradeLog
-                    trade = TradeLog(
-                        sell_order_id=sell_order.uuid,
-                        buy_order_id=orderOrm.uuid,
-                        price=price,
-                        quantity=quantity,
-                        ticker=order_data.ticker
-                    )
-                    session.add(trade)
-                    await session.flush()
-                    add_tradeLog_redis(pipe, order_data.ticker, {
-                        "ticker": order_data.ticker,
-                        "amount": quantity,
-                        "price": price,
-                        "timestamp": trade.create_at.replace(tzinfo=timezone.utc).isoformat(),
-                    })
-
-                    # 4. Обновить статус ордера, если исполнен
-                    sell_order.filled = (sell_order.filled or 0) + quantity
-                    if sell_order.filled >= sell_order.qty:
-                        sell_order.status = StatusEnum.EXECUTED
-                    else:
-                        sell_order.status = StatusEnum.PARTIALLY_EXECUTED
-
-                    await session.commit()
-                await pipe.execute()
+            await execution_orders(orderOrm, order_data.ticker,
+                                   userBalanceRub, userBalanceTicker,
+                                   matched_orders, total_cost, session, r)
 
         else:
             background_tasks.add_task(match_order_limit, orderOrm, order_data.ticker, request_id)

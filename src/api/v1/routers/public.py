@@ -138,7 +138,7 @@ async def get_orderbook_levels(r, ticker: str, request_id, limit: int = 10):
             f'[{request_id}] bad get orderbook levels',
             exc_info=e
         )
-        raise
+        raise HTTPException(500)
 
 
 @router.get('/orderbook/{ticker}')

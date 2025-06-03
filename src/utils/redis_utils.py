@@ -229,3 +229,5 @@ def update_match_orders(pipe, matched_orders, ticker, direction):
         if remaining_qty > 0:
             new_entry = f"{int(price_old)}:{int(remaining_qty)}:{order_uuid}"
             pipe.zadd(orderbook_key, {new_entry: price_old})
+        else:
+            pipe.hdel('active_orders', order_uuid)
