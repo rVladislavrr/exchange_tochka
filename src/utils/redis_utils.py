@@ -145,9 +145,9 @@ async def calculate_order_cost(
     total_cost = 0.0
     matched_orders = []
 
-    for order_data, price in orders:
+    for order_data, key in orders:
 
-        _, order_qty, uuid_orders = order_data.split(":")
+        price, order_qty, uuid_orders = order_data.split(":")
         order_qty = float(order_qty)
 
         qty_to_take = min(remaining_qty, order_qty)
@@ -158,7 +158,8 @@ async def calculate_order_cost(
             "quantity": qty_to_take,
             "cost": cost,
             "uuid": uuid_orders,
-            "original_qty": order_qty
+            "original_qty": order_qty,
+            "key": key
         })
 
         total_cost += cost
