@@ -192,8 +192,8 @@ async def match_limit_order(
     total_cost = 0.0
     matched_orders = []
 
-    for order_data, price in orders:
-        _, order_qty, order_uuid = order_data.split(":")
+    for order_data, key in orders:
+        price, order_qty, order_uuid = order_data.split(":")
         order_qty = float(order_qty)
 
         qty_to_take = min(remaining_qty, order_qty)
@@ -204,6 +204,7 @@ async def match_limit_order(
             "quantity": qty_to_take,
             "cost": cost,
             "uuid": order_uuid,
+            'key': key,
             "original_qty": order_qty
         })
 
@@ -222,12 +223,13 @@ def update_match_orders(pipe, matched_orders, ticker, direction):
         price_old = item.get("price")
         quantity = item.get("quantity")
         original_qty = item.get("original_qty")
+        key = item.get("key")
         old_entry = f"{int(price_old)}:{int(original_qty)}:{order_uuid}"
         pipe.zrem(orderbook_key, old_entry)
 
         remaining_qty = original_qty - quantity
         if remaining_qty > 0:
             new_entry = f"{int(price_old)}:{int(remaining_qty)}:{order_uuid}"
-            pipe.zadd(orderbook_key, {new_entry: price_old})
+            pipe.zadd(orderbook_key, {new_entry: key})
         else:
             pipe.hdel('active_orders', order_uuid)

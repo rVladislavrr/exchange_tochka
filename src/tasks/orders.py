@@ -1,4 +1,5 @@
 import json
+import time
 from datetime import timezone
 from src.api.v1.routers.order import SideEnum
 from src.db.db import async_session_maker
@@ -149,7 +150,7 @@ async def match_order_limit(orderOrm: Orders, ticker: str, request_id):
                 if remaining_qty_order > 0:
                     orderbook_key_add = f"orderbook:{ticker}:{'asks' if orderOrm.side == SideEnum.SELL else 'bids'}"
                     new_entry_add = f"{int(orderOrm.price)}:{int(remaining_qty_order)}:{orderOrm.uuid}"
-                    await r.zadd(orderbook_key_add, {new_entry_add: orderOrm.price})
+                    await r.zadd(orderbook_key_add, {new_entry_add: orderOrm.price + (time.time() / 1e12)})
                     await r.hset('active_orders', str(orderOrm.uuid), "active")
 
                 await session.commit()

@@ -14,7 +14,6 @@ from src.redis_conn import redis_client
 from src.schemas.order import MarketOrder, LimitOrder, create_GetOrder
 from src.tasks.orders import match_order_limit, execution_orders
 from src.utils.redis_utils import check_ticker_exists, calculate_order_cost
-from src.tasks.celery_tasks import match_order_limit2
 
 router = APIRouter(prefix="/order", tags=["orders"])
 
