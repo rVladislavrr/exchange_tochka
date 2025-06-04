@@ -72,6 +72,7 @@ async def cancel_order(request: Request,
 
             pipe = r.pipeline()
             pipe.zrem(orderbook_key, key)
+            pipe.hdel('active_orders', str(order_id))
             await pipe.execute()
             cache_logger.info(
                 f"[{request_id}] cancel_order cache (delete cache)",

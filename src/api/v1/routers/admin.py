@@ -83,6 +83,7 @@ async def cancel_order_deleted_user(user_id, request_id):
                 key = f"{int(order.price)}:{int(order.qty - order.filled)}:{order.uuid}"
                 orderbook_key = f"orderbook:{order.ticker}:{'asks' if order.side == SideEnum.SELL else 'bids'}"
                 pipe.zrem(orderbook_key, key)
+                pipe.hdel('active_orders', str(order.uuid))
                 old_status = order.status
                 order.status = StatusEnum.CANCELLED
                 database_logger.info(
@@ -188,6 +189,7 @@ async def cancel_order_deleted_ticker(id_instrument, request_id):
                 orderbook_key = f"orderbook:{order.ticker}:{'asks' if order.side == SideEnum.SELL else 'bids'}"
                 order.status = StatusEnum.CANCELLED
                 pipe.zrem(orderbook_key, key)
+                pipe.hdel('active_orders', str(order.uuid))
 
                 cache_logger.info(
                     f"[{request_id}] cancel order (instrument)",
