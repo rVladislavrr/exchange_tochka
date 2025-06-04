@@ -149,6 +149,7 @@ async def calculate_order_cost(
 
         price, order_qty, uuid_orders = order_data.split(":")
         order_qty = float(order_qty)
+        price = float(price)
 
         qty_to_take = min(remaining_qty, order_qty)
         cost = qty_to_take * price
@@ -196,6 +197,7 @@ async def match_limit_order(
     for order_data, key in orders:
         price, order_qty, order_uuid = order_data.split(":")
         order_qty = float(order_qty)
+        price = float(price)
 
         qty_to_take = min(remaining_qty, order_qty)
         cost = qty_to_take * price
