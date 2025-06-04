@@ -120,10 +120,10 @@ async def get_orderbook_levels(r, ticker: str, request_id, limit: int = 10):
         def format_orders(raw_orders):
             return [
                 {
-                    "price": price,
+                    "price":  int(order_data.split(":")[0]),
                     "qty": int(order_data.split(":")[1])
                 }
-                for order_data, price in raw_orders
+                for order_data, _ in raw_orders
             ]
         cache_logger.info(
             f'[{request_id}] get orderbook levels',
