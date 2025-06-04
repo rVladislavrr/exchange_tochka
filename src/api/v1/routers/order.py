@@ -204,16 +204,23 @@ async def create_order(request: Request, background_tasks: BackgroundTasks,
                     total_cost, matched_orders = await calculate_order_cost(r, order_data.ticker,
                                                                             order_data.qty, order_data.direction.value)
                 except ValueError as e:
-                    orderOrm = await create_cancel_order(user, session, instrument_id, order_data, request_id)
-                    await session.commit()
-                    await session.close()
 
-                    api_logger.info(
-                        f"[{request_id}] create order CANCELLED",
-                        extra={'user_id': str(user.id), 'order_id': str(orderOrm.uuid)}
+                    api_logger.warning(
+                        f"{request_id} Нет ликвидности", extra={'ticker': order_data.ticker, 'side': order_data.direction}
                     )
-                    return {"order_id": orderOrm.uuid,
-                            "success": True}
+                    await session.close()
+                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,)
+
+                    #orderOrm = await create_cancel_order(user, session, instrument_id, order_data, request_id)
+                    #await session.commit()
+
+
+                    # api_logger.info(
+                    #     f"[{request_id}] create order CANCELLED",
+                    #     extra={'user_id': str(user.id), 'order_id': str(orderOrm.uuid)}
+                    # )
+                    #return {"order_id": orderOrm.uuid,
+                      #      "success": True}
 
         else:  # order_data.direction == SideEnum.BUY
             if isinstance(order_data, MarketOrder):
@@ -222,15 +229,22 @@ async def create_order(request: Request, background_tasks: BackgroundTasks,
                     total_cost, matched_orders = await calculate_order_cost(r, order_data.ticker,
                                                                             order_data.qty, order_data.direction.value)
                 except ValueError as e:
-                    orderOrm = await create_cancel_order(user, session, instrument_id, order_data, request_id)
-                    await session.commit()
-                    await session.close()
-                    api_logger.info(
-                        f"[{request_id}] create order CANCELLED",
-                        extra={'user_id': str(user.id), 'order_id': str(orderOrm.uuid)}
+
+                    api_logger.warning(
+                        f"{request_id} Нет ликвидности",
+                        extra={'ticker': order_data.ticker, 'side': order_data.direction}
                     )
-                    return {"order_id": orderOrm.uuid,
-                            "success": True}
+                    await session.close()
+                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, )
+                    # orderOrm = await create_cancel_order(user, session, instrument_id, order_data, request_id)
+                    # await session.commit()
+                    # await session.close()
+                    # api_logger.info(
+                    #     f"[{request_id}] create order CANCELLED",
+                    #     extra={'user_id': str(user.id), 'order_id': str(orderOrm.uuid)}
+                    # )
+                    # return {"order_id": orderOrm.uuid,
+                    #         "success": True}
                 if total_cost > userBalanceRub.available_balance:
                     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                                         detail='Not enough balance total_cost = '
