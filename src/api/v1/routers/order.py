@@ -280,8 +280,9 @@ async def create_order(request: Request, background_tasks: BackgroundTasks,
                                    matched_orders, total_cost, session, r)
 
         else:
-            background_tasks.add_task(match_order_limit, orderOrm, order_data.ticker, request_id)
             await session.commit()
+            await match_order_limit(orderOrm, order_data.ticker, request_id)
+            # background_tasks.add_task(match_order_limit, orderOrm, order_data.ticker, request_id)
         return {"order_id": orderOrm.uuid,
                 "success": True}
     except HTTPException as e:
