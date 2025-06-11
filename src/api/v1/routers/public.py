@@ -118,13 +118,27 @@ async def get_orderbook_levels(r, ticker: str, request_id, limit: int = 10):
         bids = await r.zrevrange(bid_key, 0, limit - 1, withscores=True)
 
         def format_orders(raw_orders):
+            dict_ = {}
+            for order_data, price in raw_orders:
+                if dict_.get(price):
+                    dict_[price] += int(order_data.split(":")[1])
+                else:
+                    dict_[price] = int(order_data.split(":")[1])
+
             return [
                 {
                     "price": price,
-                    "qty": int(order_data.split(":")[1])
+                    "qty": qty
                 }
-                for order_data, price in raw_orders
+                for price, qty in dict_.items()
             ]
+            #     [
+            #     {
+            #         "price": price,
+            #         "qty": int(order_data.split(":")[1])
+            #     }
+            #     for order_data, price in raw_orders
+            # ]
         cache_logger.info(
             f'[{request_id}] get orderbook levels',
             extra={'ticker': ticker}
