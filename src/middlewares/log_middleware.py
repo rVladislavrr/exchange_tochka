@@ -33,7 +33,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         path = request.url.path
 
         # была проблема с ордерами смотрел только их
-        if path == '/api/v1/order':
+        if path == '/api/v1/order' or path.startswith('/api/v1/public/orderbook'):
 
             body_bytes = await request.body()
             body_str = body_bytes.decode("utf-8", errors="ignore")
