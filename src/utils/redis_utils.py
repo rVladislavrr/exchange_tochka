@@ -140,6 +140,7 @@ async def calculate_order_cost(
         orders = await r.zrange(orderbook_key, 0, -1, withscores=True)
     else:
         orders = await r.zrevrange(orderbook_key, 0, -1, withscores=True)
+        orders = sorted(orders, key=lambda x: (int(-x[1]), int(x[0].split(':')[3])))
 
     remaining_qty = quantity
     total_cost = 0.0
@@ -147,7 +148,7 @@ async def calculate_order_cost(
 
     for order_data, price in orders:
 
-        _, order_qty, uuid_orders = order_data.split(":")
+        _, order_qty, uuid_orders, timestamp = order_data.split(":")
         order_qty = float(order_qty)
 
         qty_to_take = min(remaining_qty, order_qty)
@@ -158,7 +159,8 @@ async def calculate_order_cost(
             "quantity": qty_to_take,
             "cost": cost,
             "uuid": uuid_orders,
-            "original_qty": order_qty
+            "original_qty": order_qty,
+            "timestamp":timestamp
         })
 
         total_cost += cost
@@ -187,13 +189,14 @@ async def match_limit_order(
     else:
         # bids от высокой к низкой, берём те, что >= limit
         orders = await r.zrevrangebyscore(orderbook_key, '+inf', price_limit, withscores=True)
+        orders = sorted(orders, key=lambda x: (int(-x[1]), int(x[0].split(':')[3])))
 
     remaining_qty = quantity
     total_cost = 0.0
     matched_orders = []
 
     for order_data, price in orders:
-        _, order_qty, order_uuid = order_data.split(":")
+        _, order_qty, order_uuid,timestamp = order_data.split(":")
         order_qty = float(order_qty)
 
         qty_to_take = min(remaining_qty, order_qty)
@@ -204,7 +207,8 @@ async def match_limit_order(
             "quantity": qty_to_take,
             "cost": cost,
             "uuid": order_uuid,
-            "original_qty": order_qty
+            "original_qty": order_qty,
+            "timestamp":timestamp
         })
 
         total_cost += cost
@@ -222,12 +226,13 @@ def update_match_orders(pipe, matched_orders, ticker, direction):
         price_old = item.get("price")
         quantity = item.get("quantity")
         original_qty = item.get("original_qty")
-        old_entry = f"{int(price_old)}:{int(original_qty)}:{order_uuid}"
+        timestamp = item.get("timestamp")
+        old_entry = f"{int(price_old)}:{int(original_qty)}:{order_uuid}:{timestamp}"
         pipe.zrem(orderbook_key, old_entry)
 
         remaining_qty = original_qty - quantity
         if remaining_qty > 0:
-            new_entry = f"{int(price_old)}:{int(remaining_qty)}:{order_uuid}"
+            new_entry = f"{int(price_old)}:{int(remaining_qty)}:{order_uuid}:{timestamp}"
             pipe.zadd(orderbook_key, {new_entry: price_old})
         else:
             pipe.hdel('active_orders', order_uuid)

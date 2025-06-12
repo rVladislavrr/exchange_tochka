@@ -1,4 +1,5 @@
 import json
+import time
 from datetime import timezone
 from src.db.db import async_session_maker
 from src.db.users import usersManager
@@ -97,7 +98,6 @@ async def match_order_limit(orderOrm_uuid, ticker: str, request_id, r=None):
     try:
         if not r:
             r = await redis_client.get_redis()
-        print('1')
         async with async_session_maker() as session:
             orderOrm = await session.get(Orders, orderOrm_uuid)
             try:
@@ -111,7 +111,6 @@ async def match_order_limit(orderOrm_uuid, ticker: str, request_id, r=None):
                 total_cost, matched_orders, remaining_qty_order = await match_limit_order(r, ticker,
                                                                                           orderOrm.qty, orderOrm.price,
                                                                                           orderOrm.side.value)
-                print('2')
                 if matched_orders:
 
                     orderOrm.status = StatusEnum.EXECUTED if remaining_qty_order == 0 else StatusEnum.PARTIALLY_EXECUTED
@@ -128,7 +127,6 @@ async def match_order_limit(orderOrm_uuid, ticker: str, request_id, r=None):
                         remaining_qty_order
                     )
                     await session.commit()
-                    print(3)
             except Exception as e:
                 database_logger.error(
                     f"[{request_id}] Background Task 1 error: {e}",
@@ -146,10 +144,10 @@ async def match_order_limit(orderOrm_uuid, ticker: str, request_id, r=None):
                     # Продажа: заморозить неисполненный объём
                     userBalanceTicker.available_balance -= remaining_qty_order
                     userBalanceTicker.frozen_balance += remaining_qty_order
-                print(4)
                 if remaining_qty_order > 0:
                     orderbook_key_add = f"orderbook:{ticker}:{'asks' if orderOrm.side == SideEnum.SELL else 'bids'}"
-                    new_entry_add = f"{int(orderOrm.price)}:{int(remaining_qty_order)}:{orderOrm.uuid}"
+                    timestamp = round(float(time.time()))
+                    new_entry_add = f"{int(orderOrm.price)}:{int(remaining_qty_order)}:{orderOrm.uuid}:{timestamp}"
                     await r.zadd(orderbook_key_add, {new_entry_add: orderOrm.price})
                     await r.hset('active_orders', str(orderOrm.uuid), "active")
 
