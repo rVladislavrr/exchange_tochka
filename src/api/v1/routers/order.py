@@ -12,9 +12,9 @@ from src.models import Orders, Users
 from src.models.orders import SideEnum, StatusEnum
 from src.redis_conn import redis_client
 from src.schemas.order import MarketOrder, LimitOrder, create_GetOrder
-from src.tasks.orders import match_order_limit, execution_orders
+from src.tasks.orders import execution_orders
 from src.utils.redis_utils import check_ticker_exists, calculate_order_cost
-from src.tasks.celery_tasks import match_order_limit2
+
 
 router = APIRouter(prefix="/order", tags=["orders"])
 
@@ -281,7 +281,8 @@ async def create_order(request: Request, background_tasks: BackgroundTasks,
 
         else:
             await session.commit()
-            await match_order_limit(orderOrm, order_data.ticker, request_id)
+            await r.lpush("limit_orders", f"{orderOrm.uuid}:{order_data.ticker}:{request_id}")
+            # await match_order_limit(orderOrm, order_data.ticker, request_id)
             # background_tasks.add_task(match_order_limit, orderOrm, order_data.ticker, request_id)
         return {"order_id": orderOrm.uuid,
                 "success": True}

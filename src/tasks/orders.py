@@ -1,18 +1,17 @@
 import json
 from datetime import timezone
-from src.api.v1.routers.order import SideEnum
 from src.db.db import async_session_maker
 from src.db.users import usersManager
 from src.logger import database_logger
 from src.models import Orders, TradeLog
-from src.models.orders import StatusEnum, TypeEnum
+from src.models.orders import StatusEnum, TypeEnum, SideEnum
 from src.redis_conn import redis_client
 from src.utils.redis_utils import match_limit_order, update_match_orders
 
 
 async def execution_orders(orderOrm: Orders, ticker, userRub,
                            userTicker, matched_orders,
-                           total_cost, session, redis_c, remaining_qty_order = None):
+                           total_cost, session, redis_c, remaining_qty_order=None):
     # быстрый update смаченных ордеров
     pipe = redis_c.pipeline()
     update_match_orders(pipe, matched_orders, ticker, orderOrm.side)
@@ -94,11 +93,13 @@ def add_tradeLog_redis(pipe, ticker: str, data: dict):
     pipe.ltrim(key, 0, 199)
 
 
-async def match_order_limit(orderOrm: Orders, ticker: str, request_id):
+async def match_order_limit(orderOrm_uuid, ticker: str, request_id, r=None):
     try:
-        r = await redis_client.get_redis()
-
+        if not r:
+            r = await redis_client.get_redis()
+        print('1')
         async with async_session_maker() as session:
+            orderOrm = await session.get(Orders, orderOrm_uuid)
             try:
                 userBalanceRUB = await usersManager.get_user_balance_by_ticker(
                     session, orderOrm.user_uuid, 'RUB', create_if_missing=True
@@ -110,9 +111,8 @@ async def match_order_limit(orderOrm: Orders, ticker: str, request_id):
                 total_cost, matched_orders, remaining_qty_order = await match_limit_order(r, ticker,
                                                                                           orderOrm.qty, orderOrm.price,
                                                                                           orderOrm.side.value)
+                print('2')
                 if matched_orders:
-
-                    orderOrm = await session.get(Orders, orderOrm.uuid)
 
                     orderOrm.status = StatusEnum.EXECUTED if remaining_qty_order == 0 else StatusEnum.PARTIALLY_EXECUTED
                     if orderOrm.status == StatusEnum.EXECUTED:
@@ -128,6 +128,7 @@ async def match_order_limit(orderOrm: Orders, ticker: str, request_id):
                         remaining_qty_order
                     )
                     await session.commit()
+                    print(3)
             except Exception as e:
                 database_logger.error(
                     f"[{request_id}] Background Task 1 error: {e}",
@@ -145,7 +146,7 @@ async def match_order_limit(orderOrm: Orders, ticker: str, request_id):
                     # Продажа: заморозить неисполненный объём
                     userBalanceTicker.available_balance -= remaining_qty_order
                     userBalanceTicker.frozen_balance += remaining_qty_order
-
+                print(4)
                 if remaining_qty_order > 0:
                     orderbook_key_add = f"orderbook:{ticker}:{'asks' if orderOrm.side == SideEnum.SELL else 'bids'}"
                     new_entry_add = f"{int(orderOrm.price)}:{int(remaining_qty_order)}:{orderOrm.uuid}"
