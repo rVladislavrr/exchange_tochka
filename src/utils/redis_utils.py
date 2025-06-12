@@ -138,11 +138,11 @@ async def calculate_order_cost(
 
     if side == 'BUY':
         orders = await r.zrange(orderbook_key, 0, -1, withscores=True)
-        orders = sorted(orders, key=lambda x: (int(x[1]), int(x[0].split(':')[3])))
+        orders = sorted(orders, key=lambda x: (int(x[1]), round(float(x[0].split(':')[3]), 3)))
         print(orders)
     else:
         orders = await r.zrevrange(orderbook_key, 0, -1, withscores=True)
-        orders = sorted(orders, key=lambda x: (int(-x[1]), int(x[0].split(':')[3])))
+        orders = sorted(orders, key=lambda x: (-int(x[1]), round(float(x[0].split(':')[3]), 3)))
         print(orders)
 
     remaining_qty = quantity
@@ -189,13 +189,13 @@ async def match_limit_order(
     if side == 'BUY':
         # asks сортируются от низкой к высокой, берём те, что <= limit
         orders = await r.zrangebyscore(orderbook_key, '-inf', price_limit, withscores=True)
-        orders = sorted(orders, key=lambda x: (int(x[1]), int(x[0].split(':')[3])))
+        orders = sorted(orders, key=lambda x: (int(x[1]), round(float(x[0].split(':')[3]), 3)))
         print(orders)
     else:
         # bids от высокой к низкой, берём те, что >= limit
         orders = await r.zrevrangebyscore(orderbook_key, '+inf', price_limit, withscores=True)
         print(orders)
-        orders = sorted(orders, key=lambda x: (int(-x[1]), int(x[0].split(':')[3])))
+        orders = sorted(orders, key=lambda x: (-int(x[1]), round(float(x[0].split(':')[3]), 3)))
         print(orders)
 
     remaining_qty = quantity

@@ -8,6 +8,7 @@ from src.tasks.orders import match_order_limit
 from src.redis_conn import redis_client
 import asyncio
 
+
 async def main():
     r = await redis_client.get_redis()
     while True:
@@ -21,10 +22,5 @@ async def main():
                 print('finished')
 
 
-
-
-
-
 if __name__ == '__main__':
     asyncio.run(main())
-
