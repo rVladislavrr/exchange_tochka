@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import json
 import secrets
@@ -110,6 +111,7 @@ async def get_transaction(request: Request, ticker: str = Path(pattern='^[A-Z]{2
 
 
 async def get_orderbook_levels(r, ticker: str, request_id, limit: int = 10):
+    await asyncio.sleep(0.5)
     try:
         ask_key = f"orderbook:{ticker}:asks"
         bid_key = f"orderbook:{ticker}:bids"
