@@ -7,7 +7,6 @@ from starlette.requests import Request
 from starlette.responses import Response
 from starlette.types import Message
 
-
 LOG_DIR = "logs"
 LOG_FILE = "requests.log"
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -32,8 +31,10 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         method = request.method
         path = request.url.path
 
-        # была проблема с ордерами смотрел только их
-        if path == '/api/v1/order' or path.startswith('/api/v1/public/orderbook'):
+        if (path == '/api/v1/order' or
+                path.startswith('/api/v1/public/orderbook') or
+                path == "/api/v1/balance" or
+                path == '/api/v1/admin/balance/deposit'):
 
             body_bytes = await request.body()
             body_str = body_bytes.decode("utf-8", errors="ignore")
@@ -43,7 +44,8 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             except Exception:
                 parsed_body = body_str
 
-            logger.info(f"[{request_id}] ➡️ {method} {path} | Body: {parsed_body if method in ['POST', 'DELETE'] else 'N/A'}")
+            logger.info(
+                f"[{request_id}] ➡️ {method} {path} | Body: {parsed_body if method in ['POST', 'DELETE'] else 'N/A'}")
 
             async def receive() -> Message:
                 return {"type": "http.request", "body": body_bytes}
