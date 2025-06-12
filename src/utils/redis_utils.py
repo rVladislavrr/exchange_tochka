@@ -138,9 +138,12 @@ async def calculate_order_cost(
 
     if side == 'BUY':
         orders = await r.zrange(orderbook_key, 0, -1, withscores=True)
+        orders = sorted(orders, key=lambda x: (int(x[1]), int(x[0].split(':')[3])))
+        print(orders)
     else:
         orders = await r.zrevrange(orderbook_key, 0, -1, withscores=True)
         orders = sorted(orders, key=lambda x: (int(-x[1]), int(x[0].split(':')[3])))
+        print(orders)
 
     remaining_qty = quantity
     total_cost = 0.0
@@ -186,17 +189,21 @@ async def match_limit_order(
     if side == 'BUY':
         # asks сортируются от низкой к высокой, берём те, что <= limit
         orders = await r.zrangebyscore(orderbook_key, '-inf', price_limit, withscores=True)
+        orders = sorted(orders, key=lambda x: (int(x[1]), int(x[0].split(':')[3])))
+        print(orders)
     else:
         # bids от высокой к низкой, берём те, что >= limit
         orders = await r.zrevrangebyscore(orderbook_key, '+inf', price_limit, withscores=True)
+        print(orders)
         orders = sorted(orders, key=lambda x: (int(-x[1]), int(x[0].split(':')[3])))
+        print(orders)
 
     remaining_qty = quantity
     total_cost = 0.0
     matched_orders = []
 
     for order_data, price in orders:
-        _, order_qty, order_uuid,timestamp = order_data.split(":")
+        _, order_qty, order_uuid, timestamp = order_data.split(":")
         order_qty = float(order_qty)
 
         qty_to_take = min(remaining_qty, order_qty)
@@ -208,7 +215,7 @@ async def match_limit_order(
             "cost": cost,
             "uuid": order_uuid,
             "original_qty": order_qty,
-            "timestamp":timestamp
+            "timestamp": timestamp
         })
 
         total_cost += cost
