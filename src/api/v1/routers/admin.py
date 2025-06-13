@@ -80,7 +80,7 @@ async def cancel_order_deleted_user(user_id, request_id):
             pipe = r.pipeline()
 
             for order in orders:
-                key = f"{int(order.price)}:{int(order.qty - order.filled)}:{order.uuid}"
+                key = f"{int(order.price)}:{int(order.qty - order.filled)}:{order.uuid}:{round(order.create_at.timestamp(), 3)}"
                 orderbook_key = f"orderbook:{order.ticker}:{'asks' if order.side == SideEnum.SELL else 'bids'}"
                 pipe.zrem(orderbook_key, key)
                 pipe.hdel('active_orders', str(order.uuid))
@@ -185,7 +185,7 @@ async def cancel_order_deleted_ticker(id_instrument, request_id):
             for order in instruments.orders:
                 if order.status == StatusEnum.EXECUTED or order.status == StatusEnum.CANCELLED:
                     continue
-                key = f"{int(order.price)}:{int(order.qty - order.filled)}:{order.uuid}"
+                key = f"{int(order.price)}:{int(order.qty - order.filled)}:{order.uuid}:{round(order.create_at.timestamp(), 3)}"
                 orderbook_key = f"orderbook:{order.ticker}:{'asks' if order.side == SideEnum.SELL else 'bids'}"
                 order.status = StatusEnum.CANCELLED
                 pipe.zrem(orderbook_key, key)
@@ -240,8 +240,8 @@ async def delete_instrument(request: Request, backgroundTasks: BackgroundTasks,
     try:
         request_id = request.state.request_id
         deleted_instruments = await instrumentsManager.delete(ticker, session, request_id)
-        backgroundTasks.add_task(update_cache_after_delete, ticker, request_id)
         backgroundTasks.add_task(cancel_order_deleted_ticker, deleted_instruments.id, request_id)
+        backgroundTasks.add_task(update_cache_after_delete, ticker, request_id)
         api_logger.info(
             f"[{request.state.request_id}] Delete instrument",
             extra={

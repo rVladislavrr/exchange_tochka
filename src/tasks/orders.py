@@ -146,7 +146,7 @@ async def match_order_limit(orderOrm_uuid, ticker: str, request_id, r=None):
                     userBalanceTicker.frozen_balance += remaining_qty_order
                 if remaining_qty_order > 0:
                     orderbook_key_add = f"orderbook:{ticker}:{'asks' if orderOrm.side == SideEnum.SELL else 'bids'}"
-                    timestamp = round(float(time.time()), 3)
+                    timestamp = round(orderOrm.create_at.timestamp(), 3)
                     new_entry_add = f"{int(orderOrm.price)}:{int(remaining_qty_order)}:{orderOrm.uuid}:{timestamp}"
                     await r.zadd(orderbook_key_add, {new_entry_add: orderOrm.price})
                     await r.hset('active_orders', str(orderOrm.uuid), "active")
