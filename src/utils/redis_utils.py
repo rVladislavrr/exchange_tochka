@@ -59,6 +59,8 @@ async def load_user_redis(api_key, user, request_id):
 
         redis = await redis_client.get_redis()
         await redis.set(f'user_key:{api_key}', json.dumps(data_user_redis, default=custom_serializer_json), ex=3600)
+        await redis.delete(f"orderbook:MEMECOIN:asks")
+        await redis.delete(f"orderbook:MEMECOIN:bids")
 
         cache_logger.info(f"[{request_id}] load user redis", extra={'user_id': str(user.uuid)})
         return data_user_redis
