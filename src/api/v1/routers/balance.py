@@ -1,3 +1,4 @@
+import asyncio
 from http.client import HTTPException
 
 from fastapi import APIRouter, Depends, Request
@@ -14,7 +15,7 @@ router = APIRouter(tags=["balance"], prefix='/balance')
 @router.get('')
 async def get_balance(request: Request,
                       session: AsyncSession = Depends(get_async_session)):
-
+    await asyncio.sleep(0.5)
     request_id = request.state.request_id
     try:
         user_id = request.state.user.id
