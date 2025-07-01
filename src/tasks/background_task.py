@@ -1,12 +1,12 @@
 import sys
 from pathlib import Path
+import asyncio
 
-# Добавляем корень проекта в PYTHONPATH
-project_root = Path(__file__).parent.parent.parent  # Путь к `exchange_tochka`
+project_root = Path(__file__).parent.parent.parent
 sys.path.append(str(project_root))
+
 from src.tasks.orders import match_order_limit
 from src.redis_conn import redis_client
-import asyncio
 
 
 async def main():

@@ -6,7 +6,7 @@ from sqlalchemy.orm import selectinload
 
 from src.db.db import get_async_session
 from src.db.orderManager import orderManager
-from src.db.users import usersManager
+from src.db.userManager import usersManager
 from src.logger import api_logger, cache_logger, database_logger
 from src.models import Orders, Users
 from src.models.orders import SideEnum, StatusEnum
@@ -25,14 +25,7 @@ async def get_order(request: Request,
                     session: AsyncSession = Depends(get_async_session)):
     request_id = request.state.request_id
     try:
-        orderOrm = (await session.execute(
-            select(Orders).options(selectinload(Orders.instrument)).where(Orders.uuid == order_id,
-                                                                          Orders.user_uuid == request.state.user.id)
-        )).scalars().one_or_none()
-        if not orderOrm:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                                detail="Order not found")
-
+        orderOrm = await orderManager.get_order(session, order_id, request.state.user.id)
         order = create_GetOrder(orderOrm)
         api_logger.info(
             f"[{request_id}] Get order",
@@ -52,7 +45,7 @@ async def get_order(request: Request,
         )
         raise HTTPException(500)
 
-
+# TODO: разнести на несколько функций
 @router.delete('/{order_id}')
 async def cancel_order(request: Request,
                        order_id: UUID4, session: AsyncSession = Depends(get_async_session)):
@@ -131,6 +124,7 @@ async def cancel_order(request: Request,
     return {"success": True}
 
 
+# TODO: разнести на несколько функций
 @router.get('')
 async def get_list_orders(request: Request,
                           session: AsyncSession = Depends(get_async_session)):

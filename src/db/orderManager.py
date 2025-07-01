@@ -1,3 +1,8 @@
+from fastapi import HTTPException, status
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+
+
 from src.db.base import BaseManager
 from src.models import Orders
 from src.models.orders import TypeEnum, SideEnum, StatusEnum
@@ -22,6 +27,16 @@ class OrderManager(BaseManager):
         await session.flush()
         await session.refresh(orders)
         return orders
+
+    @staticmethod
+    async def get_order(session, order_id, user_id):
+        orderOrm = (await session.execute(
+            select(Orders).options(selectinload(Orders.instrument)).where(Orders.uuid == order_id,
+                                                                          Orders.user_uuid == user_id)
+        )).scalars().one_or_none()
+        if not orderOrm:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                                detail="Order not found")
 
 
 orderManager = OrderManager()

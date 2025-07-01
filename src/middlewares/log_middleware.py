@@ -22,7 +22,8 @@ file_handler.setFormatter(formatter)
 if not logger.handlers:
     logger.addHandler(file_handler)
 
-
+# Старое логирование всего и чек для тестов
+# что бы понять где что падает
 class LoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         request_id = str(uuid.uuid4())
@@ -55,7 +56,6 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             try:
                 response: Response = await call_next(request)
 
-                # Перехватываем тело ответа
                 response_body = b""
                 async for chunk in response.body_iterator:
                     response_body += chunk

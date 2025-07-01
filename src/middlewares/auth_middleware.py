@@ -6,7 +6,7 @@ from starlette.responses import JSONResponse
 
 from src.db.db import async_session_maker
 from src.redis_conn import redis_client
-from src.db.users import usersManager
+from src.db.userManager import usersManager
 from src.schemas.user import UserRedis
 from src.utils.redis_utils import load_user_redis
 
@@ -49,7 +49,6 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
 
         except Exception as e:
-            print(e)
             return JSONResponse({"detail": "Missing or invalid token"}, status_code=401)
 
         user = UserRedis.model_validate(user, from_attributes=True)

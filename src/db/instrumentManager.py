@@ -4,10 +4,15 @@ from typing import Any
 from sqlalchemy import select, func, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from .base import BaseManager
 from src.models import Instruments
-from ..logger import database_logger
+from .db import async_session_maker
+from .userManager import usersManager
+from ..logger import database_logger, cache_logger
+from ..models.orders import StatusEnum, SideEnum
+from ..redis_conn import redis_client
 
 
 class InstrumentsManager(BaseManager):
@@ -98,7 +103,7 @@ class InstrumentsManager(BaseManager):
             database_logger.info(f"[{request_id}] Instrument deleted", extra={
                 "ticker": ticker,
                 "id": deleted_instrument.id,
-                'instrument_name':  deleted_instrument.name,
+                'instrument_name': deleted_instrument.name,
             })
 
             return deleted_instrument
@@ -114,6 +119,70 @@ class InstrumentsManager(BaseManager):
                 exc_info=e,
             )
             raise HTTPException(500)
+
+    @staticmethod
+    async def cancel_order_deleted_ticker(id_instrument, request_id):
+        try:
+            async with async_session_maker() as session:
+                res = await session.execute(
+                    select(Instruments).options(selectinload(Instruments.orders))
+                    .where(
+                        Instruments.id == id_instrument,
+                    )
+                )
+                instruments = res.scalar_one_or_none()
+                r = await redis_client.get_redis()
+                pipe = r.pipeline()
+
+                for order in instruments.orders:
+                    if order.status == StatusEnum.EXECUTED or order.status == StatusEnum.CANCELLED:
+                        continue
+                    key = f"{int(order.price)}:{int(order.qty - order.filled)}:{order.uuid}:{round(order.create_at.timestamp(), 3)}"
+                    orderbook_key = f"orderbook:{order.ticker}:{'asks' if order.side == SideEnum.SELL else 'bids'}"
+                    order.status = StatusEnum.CANCELLED
+                    pipe.zrem(orderbook_key, key)
+                    pipe.hdel('active_orders', str(order.uuid))
+
+                    cache_logger.info(
+                        f"[{request_id}] cancel order (instrument)",
+                        extra={"orderbook_key": orderbook_key, 'key': key}
+                    )
+
+                    if order.side == SideEnum.BUY:
+                        userBalanceRUB = await usersManager.get_user_balance_by_ticker(
+                            session, order.user_uuid, ticker='RUB', create_if_missing=True
+                        )
+                        userBalanceRUB.frozen_balance -= order.price * (order.qty - order.filled)
+                        userBalanceRUB.available_balance += order.price * (order.qty - order.filled)
+                        database_logger.info(
+                            "Update balance(Cancel Order instrument)",
+                            extra={
+                                "user_id": str(order.user_uuid),
+                                "ticker": order.ticker,
+                                "available_balance +=": order.price * (order.qty - order.filled),
+                                "frozen_balance -=": order.price * (order.qty - order.filled)
+                            }
+                        )
+                    database_logger.info(
+                        f"[{request_id}] Cancel Order ( instrument )",
+                        extra={"id ": str(order.uuid), 'user_id': str(order.user_uuid),
+                               "side": order.side.value,
+                               "ticker": order.ticker,
+                               "price": order.price}
+                    )
+                await pipe.execute()
+                await session.commit()
+                await session.close()
+        except Exception as e:
+            database_logger.error(
+                f"[{request_id}] Cancel Order (DELETE instrument)",
+                exc_info=e
+            )
+            cache_logger.info(
+                f"[{request_id}] Cancel Order CACHE (DELETE instrument)",
+                exc_info=e)
+        finally:
+            await session.close()
 
 
 instrumentsManager = InstrumentsManager()

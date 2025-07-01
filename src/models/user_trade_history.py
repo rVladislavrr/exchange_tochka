@@ -2,7 +2,7 @@ from sqlalchemy import ForeignKey
 from sqlalchemy.orm import mapped_column, Mapped, relationship
 
 from src.models.base import Base
-
+# не актуальная таблица
 class UserTradeHistory(Base):
     __tablename__ = 'user_trade_history'
 

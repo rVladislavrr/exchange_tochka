@@ -5,13 +5,14 @@ from sqlalchemy.exc import IntegrityError
 
 from src.config import settings
 from src.db.db import async_session_maker
-from src.db.users import usersManager
+from src.db.userManager import usersManager
 from src.models import Instruments
 from src.models.users import RoleEnum, Users
 from src.redis_conn import redis_client
 
 RUB_TICKER = 'RUB'
-
+ADMIN_LOCK_KEY = "create_admin_user_lock"
+LOCK_TTL = 5
 
 async def create_rub():
     async with async_session_maker() as session:
@@ -40,9 +41,6 @@ async def create_rub():
             await session.rollback()
             print("RUB уже был создан другим воркером.")
 
-
-ADMIN_LOCK_KEY = "create_admin_user_lock"
-LOCK_TTL = 5
 
 async def create_admin_user():
     r = await redis_client.get_redis()

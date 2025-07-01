@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Security, Depends
@@ -18,9 +19,17 @@ async def for_documentation(api_key: str = Security(api_key_header)):
 # TODO: при запуске обновлять кеш все ордеров
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await redis_client.connect()
-    await create_rub()
-    await create_admin_user()
+    for _ in range(5):
+        try:
+            await redis_client.connect()
+            await create_rub()
+            await create_admin_user()
+            break
+        except Exception as e:
+            await asyncio.sleep(1)
+            print(e)
+    else:
+        exit('Bad conection')
     yield
     await redis_client.close()
 app = FastAPI(

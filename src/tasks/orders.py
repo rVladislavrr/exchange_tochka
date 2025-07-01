@@ -1,9 +1,7 @@
 import json
-import time
 from datetime import timezone
 from src.db.db import async_session_maker
-from src.db.users import usersManager
-from src.logger import database_logger
+from src.db.userManager import usersManager
 from src.models import Orders, TradeLog
 from src.models.orders import StatusEnum, TypeEnum, SideEnum
 from src.redis_conn import redis_client
@@ -118,21 +116,13 @@ async def match_order_limit(orderOrm_uuid, ticker: str, request_id, r=None):
                         orderOrm.filled = orderOrm.qty
                     elif orderOrm.status == StatusEnum.PARTIALLY_EXECUTED:
                         orderOrm.filled = orderOrm.qty - remaining_qty_order
-                    database_logger.info(
-                        f"[{request_id}] Background Task 1 status",
-                        extra={"order_uuid": str(orderOrm.uuid), 'status': orderOrm.status.value},
-                    )
                     await execution_orders(
                         orderOrm, ticker, userBalanceRUB, userBalanceTicker, matched_orders, total_cost, session, r,
                         remaining_qty_order
                     )
                     await session.commit()
             except Exception as e:
-                database_logger.error(
-                    f"[{request_id}] Background Task 1 error: {e}",
-                    exc_info=True,
-                    extra={"order_uuid": str(orderOrm.uuid)},
-                )
+                pass
             try:
                 if orderOrm.side == SideEnum.BUY:
                     # Списали уже реально потраченное в userBalanceRUB.available_balance -= total_cost выше
@@ -153,10 +143,7 @@ async def match_order_limit(orderOrm_uuid, ticker: str, request_id, r=None):
 
                 await session.commit()
             except Exception as e:
-                database_logger.error(
-                    "Background task failed 2",
-                    exc_info=e,
-                )
+                pass
 
     except Exception as e:
         await session.rollback()

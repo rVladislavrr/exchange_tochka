@@ -10,7 +10,7 @@ from sqlalchemy import select
 
 from src import schemas
 from src.db.db import get_async_session, AsyncSession
-from src.db.users import usersManager
+from src.db.userManager import usersManager
 from src.logger import api_logger, cache_logger
 from src.models import TradeLog
 from src.redis_conn import redis_client
@@ -22,9 +22,7 @@ router = APIRouter(tags=["Public"], prefix='/public')
 
 def generate_api_key(username: str) -> str:
     random_part = secrets.token_hex(16)
-
     unique_string = f"{username}-{random_part}"
-
     return hashlib.sha256(unique_string.encode()).hexdigest()
 
 
@@ -36,7 +34,7 @@ async def registration(request: Request, user: schemas.UserBase,
     try:
         api_key = generate_api_key(user.name)
         user = await usersManager.create(session, {'name': user.name,
-                                                         'api_key': api_key}, request_id)
+                                                   'api_key': api_key}, request_id)
 
         background_tasks.add_task(load_user_redis, api_key, user, request_id)
         model = schemas.UserRegister.model_validate(user, from_attributes=True)
@@ -134,13 +132,7 @@ async def get_orderbook_levels(r, ticker: str, request_id, limit: int = 10):
                 }
                 for price, qty in dict_.items()
             ]
-            #     [
-            #     {
-            #         "price": price,
-            #         "qty": int(order_data.split(":")[1])
-            #     }
-            #     for order_data, price in raw_orders
-            # ]
+
         cache_logger.info(
             f'[{request_id}] get orderbook levels',
             extra={'ticker': ticker}
